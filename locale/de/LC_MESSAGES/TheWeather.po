@@ -1,0 +1,379 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: hetweer\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2021-11-07 13:57+0200\n"
+"PO-Revision-Date: \n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"Language: de_DE\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Poedit-KeywordsList: _;gettext;gettext_noop\n"
+"X-Poedit-Basepath: ../../..\n"
+"X-Poedit-SourceCharset: UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n!=1);\n"
+"X-Generator: Poedit 1.8.6\n"
+"X-Poedit-SearchPath-0: .\n"
+
+msgid "Mo"
+msgstr "Mo"
+
+msgid "Tu"
+msgstr "Di"
+
+msgid "We"
+msgstr "Mi"
+
+msgid "Th"
+msgstr "Do"
+
+msgid "Fr"
+msgstr "Fr"
+
+msgid "Sa"
+msgstr "Sa"
+
+msgid "Su"
+msgstr "So"
+
+msgid "Monday"
+msgstr "Montag"
+
+msgid "Tuesday"
+msgstr "Dienstag"
+
+msgid "Wednesday"
+msgstr "Mittwoch"
+
+msgid "Thursday"
+msgstr "Donnerstag"
+
+msgid "Friday"
+msgstr "Freitag"
+
+msgid "Saturday"
+msgstr "Samstag"
+
+msgid "Sunday"
+msgstr "Sonntag"
+
+msgid "Belgium"
+msgstr "Belgien"
+
+msgid "Changeable and chance of mist"
+msgstr "Wechselhaft und Chance op Nebel"
+
+msgid "Changeable cloudy light snowfall"
+msgstr "Wechselhaft bewölkt met leichtem Schneefall"
+
+msgid "Clear and chance of mist"
+msgstr "Klar und Nebel möglich"
+
+msgid "Clear night"
+msgstr "Klare Nacht"
+
+msgid "Clouds radar"
+msgstr "Wolkenradar"
+
+msgid "Cloudy"
+msgstr "Bewölkt"
+
+msgid "Cloudy and chance of showers"
+msgstr "Bewölkt und Schauer möglich"
+
+msgid "Download error: Check spelling."
+msgstr "Download-Fehler: Rechtschreibung prüfen."
+
+msgid "Drizzle"
+msgstr "Nieselregen"
+
+msgid "E"
+msgstr "O"
+
+msgid "Enter cityname e.g. london or london_gb or london-2643743"
+msgstr "Stadtname eingeben, z. B. london oder london_gb oder london-2643743"
+
+msgid "Europe"
+msgstr "Europa"
+
+msgid "Exit"
+msgstr "Beenden"
+
+msgid "Favorite Locations"
+msgstr "Bevorzugte Orte"
+
+msgid "Feels Like: "
+msgstr "Gefühlt wie: "
+
+msgid "Hail radar"
+msgstr "Hagelradar"
+
+msgid "Heavy clouds"
+msgstr "Starke Bewölkung"
+
+msgid "Heavy clouds  heavy showers"
+msgstr "Starke Bewölkung, starke Schauer"
+
+msgid "Heavy clouds  thundershowers"
+msgstr "Starke Bewölkung, Gewitterschauer"
+
+msgid "Heavy clouds and heavy snowfall"
+msgstr "Starke Bewölkung und starker Schneefall"
+
+msgid "Heavy clouds light snowfall"
+msgstr "Starke Bewölkung, leichter Schneefall"
+
+msgid "Heavy clouds showers possible"
+msgstr "Starke Bewölkung, Schauer möglich"
+
+msgid "Heavy clouds winter rainfall"
+msgstr "Starke Bewölkung, Winterregen"
+
+msgid "Help"
+msgstr "Hilfe"
+
+msgid "Km/h"
+msgstr "km/h"
+
+msgid "Light cloudy"
+msgstr "Leicht bewölkt"
+
+msgid "Local Weather"
+msgstr "Lokales Wetter"
+
+msgid "Location +"
+msgstr "Ort +"
+
+msgid "Location -"
+msgstr "Ort -"
+
+msgid "Location:"
+msgstr "Ort:"
+
+msgid ""
+Manual adding Citynumbers:\n
+Go to www.bbc.com/weather\n
+Search city and find citycode in the internetlink.\n
+\n
+Go back to \Location +\" and add cityname-number e.g.\n"
+\Dusseldorf-2934246\" or \"Dusseld-2934246\"\n"
+Don't forget the \-\" sign."
+msgstr ""
+Manuelles Hinzufügen van Stadtnummern:\n
+Gehen Sie zu www.bbc.com/weather\n
+Stadt suchen und Stadtcode im Internetlink finden.\n
+\n
+Gehen Sie zurück zu \Ort +\" und fügen Sie Stadtname-Nummer hinzu, z. B.\n"
+\Dusseldorf-2934246\" oder \"Dusseld-2934246\".\n"
+Vergessen Sie das \-\"-Zeichen nicht."
+
+msgid "Mist radar"
+msgstr "Nebelradar"
+
+msgid "Mostly clear"
+msgstr "Meistens klar"
+
+msgid "Mostly sunny"
+msgstr "Meistens sonnig"
+
+msgid "N"
+msgstr "N"
+
+msgid "NE"
+msgstr "NO"
+
+msgid "NW"
+msgstr "NW"
+
+msgid "Rainfall radar"
+msgstr "Niederschlagsradar"
+
+msgid "WeatherInfo"
+msgstr "WetterInfo"
+
+msgid "S"
+msgstr "S"
+
+msgid "SE"
+msgstr "SO"
+
+msgid "SW"
+msgstr "SW"
+
+msgid "Satellite"
+msgstr "Satellit"
+
+msgid "Showers and chance of thunder"
+msgstr "Schauer und Gewittergefahr"
+
+msgid "Snow radar"
+msgstr "Schneeradar"
+
+msgid "Sun radar"
+msgstr "Sonnenradar"
+
+msgid "Sunny / Clear"
+msgstr "Sonnig / Klar"
+
+msgid "Sunny and chance of mist"
+msgstr "Sonnig und Chance auf Nebel"
+
+msgid "Sunny and chance of showers"
+msgstr "Sonnig, Schauer möglich"
+
+msgid "Sunny and chance of thundershowers"
+msgstr "Sonnig, Gewitterschauer möglich"
+
+msgid "Sunny few clouds"
+msgstr "Sonnig, wenige Wolken"
+
+msgid "Sunpower-UV"
+msgstr "Sonnenenergie-UV"
+
+msgid "Temperature"
+msgstr "Temperatur"
+
+msgid "The Netherlands"
+msgstr "Die Niederlande"
+
+msgid "TheWeather"
+msgstr "DasWetter"
+
+msgid "Thunder radar"
+msgstr "Gewitterradar"
+
+msgid "W"
+msgstr "W"
+
+msgid "Weather forecast-nl"
+msgstr "Wettervorhersage-nl"
+
+msgid "Wind direction: "
+msgstr "Windrichtung: "
+
+msgid "Back"
+msgstr "Zurück"
+
+msgid "Background"
+msgstr "Hintergrund"
+
+msgid "Background reset to standard."
+msgstr "Hintergrund auf Standard zurückgesetzt."
+
+msgid "Choose 2nd location"
+msgstr "Zweiten Ort auswählen"
+
+msgid "Choose 2nd location:"
+msgstr "Zweiten Ort auswählen:"
+
+msgid "Choose background:"
+msgstr "Hintergrund auswählen:"
+
+msgid "City not found. Press YELLOW to change."
+msgstr "Stadt nicht gefunden. Drücken Sie GELB zum Ändern."
+
+msgid "Compare Locations"
+msgstr "Orte vergleichen"
+
+msgid "Data error"
+msgstr "Datenfehler"
+
+msgid "Download error: No response try again"
+msgstr "Download-Fehler: Keine Antwort, versuchen Sie es erneut"
+
+msgid "Error fetching data."
+msgstr "Fehler beim Abrufen der Daten."
+
+msgid "Error loading"
+msgstr "Fehler beim Laden"
+
+msgid "Extra Icons "
+msgstr "Zusätzliche Icons "
+
+msgid "Extreme cold!"
+msgstr "Extreme Kälte!"
+
+msgid "Extreme heat!"
+msgstr "Extreme Hitze!"
+
+msgid "h"
+msgstr "Std."
+
+msgid "Heavy rain!"
+msgstr "Starker Regen!"
+
+msgid "Heavy storm!"
+msgstr "Schwerer Sturm!"
+
+msgid "Icon pack changed.\nThe plugin will restart..."
+msgstr "Icon-Paket geändert.\nDas Plugin wird neu gestartet..."
+
+msgid "Loading background image, please wait..."
+msgstr "Hintergrundbild wird geladen, bitte warten..."
+
+msgid "Loading..."
+msgstr "Laden..."
+
+msgid "No 2nd location"
+msgstr "Kein zweiter Ort"
+
+msgid "No info"
+msgstr "Keine Info"
+
+msgid "No saved cities found.\nFirst add cities via the location screen."
+msgstr "Keine gespeicherten Städte gefunden.\nFügen Sie zuerst Städte über den Ortsbildschirm hinzu."
+
+msgid "Not found"
+msgstr "Nicht gefunden"
+
+msgid "Press YELLOW to choose a 2nd location."
+msgstr "Drücken Sie GELB, um einen zweiten Ort auszuwählen."
+
+msgid "Rain: "
+msgstr "Regen: "
+
+msgid "Select"
+msgstr "Auswählen"
+
+msgid "Settings"
+msgstr "Einstellungen"
+
+msgid "Severe cold!"
+msgstr "Strenge Kälte!"
+
+msgid "Standard"
+msgstr "Standard"
+
+msgid "Standard (iconpack)"
+msgstr "Standard (Icon-Paket)"
+
+msgid "Standard Icons"
+msgstr "Standard-Icons"
+
+msgid "Strong wind!"
+msgstr "Starker Wind!"
+
+msgid "Sun: "
+msgstr "Sonne: "
+
+msgid "Very heavy rain!"
+msgstr "Sehr starker Regen!"
+
+msgid "Warm weather!"
+msgstr "Warmes Wetter!"
+
+msgid "Whoops!\nSlow or no Internet connection\nPlease try again"
+msgstr "Hoppla!\nLangsame oder keine Internetverbindung\nBitte versuchen Sie es erneut"
+
+msgid "Wind: "
+msgstr "Wind: "
+
+msgid "Tip!\n"
+"Press the hidden Yellow button in the main menu to change the background.\n\n"
+"Press the hidden Green button in the main menu to change the hour interval."
+msgstr "Tipp!\n"
+"Drücken Sie die verborgene gelbe Taste im Hauptmenü, um den Hintergrund zu ändern.\n\n"
+"Drücken Sie die verborgene grüne Taste im Hauptmenü, um das Stundenintervall zu ändern."
+
