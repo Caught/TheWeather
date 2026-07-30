@@ -3,17 +3,18 @@ set -e
 
 REPO="Caught/TheWeather"
 NAME="theweather"
-VERSION="1.0"
+VERSION="3.0"
+TAG="v${VERSION}"
 
 if command -v opkg >/dev/null 2>&1; then
-    PKG="${NAME}_${VERSION}_all.ipk"
-    URL="https://raw.githubusercontent.com/${REPO}/main/ipk/${PKG}"
+    PKG="enigma2-plugin-extensions-${NAME}_${VERSION}_all.ipk"
+    URL="https://github.com/${REPO}/releases/download/${TAG}/${PKG}"
     echo "Downloading $PKG ..."
     wget -q -O "/tmp/${PKG}" "$URL"
     opkg install "/tmp/${PKG}"
 elif command -v dpkg >/dev/null 2>&1; then
-    PKG="${NAME}_${VERSION}_all.deb"
-    URL="https://raw.githubusercontent.com/${REPO}/main/deb/${PKG}"
+    PKG="enigma2-plugin-extensions-${NAME}_${VERSION}.deb"
+    URL="https://github.com/${REPO}/releases/download/${TAG}/${PKG}"
     echo "Downloading $PKG ..."
     wget -q -O "/tmp/${PKG}" "$URL"
     dpkg -i "/tmp/${PKG}"
