@@ -7,7 +7,7 @@ VERSION="3.0"
 TAG="v${VERSION}"
 
 if command -v dpkg >/dev/null 2>&1; then
-    PKG="enigma2-plugin-extensions-${NAME}_${VERSION}.deb"
+    PKG="enigma2-plugin-extensions-${NAME}_${VERSION}_all.deb"
     URL="https://github.com/${REPO}/releases/download/${TAG}/${PKG}"
     echo "Downloading $PKG ..."
     wget -q -O "/tmp/${PKG}" "$URL"
