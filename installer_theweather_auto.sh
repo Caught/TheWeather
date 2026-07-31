@@ -4,11 +4,10 @@ set -e
 REPO="Caught/TheWeather"
 NAME="theweather"
 VERSION="3.0"
-TAG="v${VERSION}"
 
 if command -v dpkg >/dev/null 2>&1; then
     PKG="enigma2-plugin-extensions-${NAME}_${VERSION}_all.deb"
-    URL="https://github.com/${REPO}/releases/download/${TAG}/${PKG}"
+    URL="https://raw.githubusercontent.com/${REPO}/main/deb/${PKG}"
     echo "Downloading $PKG ..."
     wget -q -O "/tmp/${PKG}" "$URL"
     dpkg -i "/tmp/${PKG}"
@@ -25,4 +24,3 @@ fi
 
 echo "Installatie klaar. Herstart Enigma2..."
 killall -9 enigma2 2>/dev/null || true
-
