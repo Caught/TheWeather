@@ -14,7 +14,7 @@ if command -v dpkg >/dev/null 2>&1; then
     dpkg -i "/tmp/${PKG}"
 elif command -v opkg >/dev/null 2>&1; then
     PKG="enigma2-plugin-extensions-${NAME}_${VERSION}_all.ipk"
-    URL="https://github.com/${REPO}/releases/download/${TAG}/${PKG}"
+    URL="https://raw.githubusercontent.com/${REPO}/main/ipk/${PKG}"
     echo "Downloading $PKG ..."
     wget -q -O "/tmp/${PKG}" "$URL"
     opkg install "/tmp/${PKG}"
