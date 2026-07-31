@@ -990,7 +990,7 @@ class fourteen(Screen):
                     lineheightcold = tempdiffcold * 15
                 yposlinecold = (1200-(curtemp*15)) - lineheightcold
                 yposlinecold = yposlinecold+maxheightshift
-                thatdaymin = (yposlinecold + 15) + lineheightcold
+                thatdaymin = (yposlinecold + 15) + lineheightcold + 54  # take 60 if hight of the linetempmin-label is too low (HD)
                 if thatdaymin > maxlowertemp:
                     maxlowertemp = thatdaymin
             if maxlowertemp > sz_h:
@@ -1156,7 +1156,7 @@ class fourteen(Screen):
                     lineheightcold = tempdiffcold * 10
                 yposlinecold = (800-(curtemp*10)) - lineheightcold
                 yposlinecold = yposlinecold + maxheightshift           
-                thatdaymin = (yposlinecold + 10) + lineheightcold
+                thatdaymin = (yposlinecold + 10) + lineheightcold + 36  # take 40 if hight of the linetempmin-label is too low (SD)
                 if thatdaymin > maxlowertemp:
                     maxlowertemp = thatdaymin
             if maxlowertemp > sz_h:
