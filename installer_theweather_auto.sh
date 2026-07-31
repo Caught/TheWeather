@@ -6,18 +6,18 @@ NAME="theweather"
 VERSION="3.0"
 TAG="v${VERSION}"
 
-if command -v opkg >/dev/null 2>&1; then
-    PKG="enigma2-plugin-extensions-${NAME}_${VERSION}_all.ipk"
-    URL="https://github.com/${REPO}/releases/download/${TAG}/${PKG}"
-    echo "Downloading $PKG ..."
-    wget -q -O "/tmp/${PKG}" "$URL"
-    opkg install "/tmp/${PKG}"
-elif command -v dpkg >/dev/null 2>&1; then
+if command -v dpkg >/dev/null 2>&1; then
     PKG="enigma2-plugin-extensions-${NAME}_${VERSION}.deb"
     URL="https://github.com/${REPO}/releases/download/${TAG}/${PKG}"
     echo "Downloading $PKG ..."
     wget -q -O "/tmp/${PKG}" "$URL"
     dpkg -i "/tmp/${PKG}"
+elif command -v opkg >/dev/null 2>&1; then
+    PKG="enigma2-plugin-extensions-${NAME}_${VERSION}_all.ipk"
+    URL="https://github.com/${REPO}/releases/download/${TAG}/${PKG}"
+    echo "Downloading $PKG ..."
+    wget -q -O "/tmp/${PKG}" "$URL"
+    opkg install "/tmp/${PKG}"
 else
     echo "Geen opkg of dpkg gevonden — kan niet installeren."
     exit 1
