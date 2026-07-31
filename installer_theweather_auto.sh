@@ -25,3 +25,4 @@ fi
 
 echo "Installatie klaar. Herstart Enigma2..."
 killall -9 enigma2 2>/dev/null || true
+
