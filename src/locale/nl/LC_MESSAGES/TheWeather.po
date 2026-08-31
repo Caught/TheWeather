@@ -369,10 +369,15 @@ msgstr "Oeps!\nTrage of geen internetverbinding\nProbeer het opnieuw"
 msgid "Wind: "
 msgstr "Wind: "
 
-msgid "Tip!\n"
-"Press the hidden Yellow button in the main menu to change the background.\n\n"
-"Press the hidden Green button in the main menu to change the hour interval."
-msgstr "Tip!\n"
-"Druk op de verborgen gele toets in het hoofdmenu om de achtergrond te wijzigen.\n\n"
-"Druk op de verborgen groene toets in het hoofdmenu om het uurinterval te wijzigen."
+msgid "Loading radar..."
+msgstr "Radar laden..."
+
+msgid "Please wait..."
+msgstr "Even wachten..."
+
+msgid "Map zoom: %s"
+msgstr "Kaartzoom: %s"
+
+msgid "Tip!\nPress the hidden Yellow button in the main menu to open the RainRadar.\n\nPress the hidden Green button in the main menu to change the hour interval.\n\nPress the hidden Blue button in the main menu to compare two cities.\n\nPress OK here to toggle the temperature overlay: %s"
+msgstr "Tip!\nDruk op de verborgen gele knop in het hoofdmenu om de regenradar te openen.\n\nDruk op de verborgen groene knop in het hoofdmenu om het uurinterval te wijzigen.\n\nDruk op de verborgen blauwe knop in het hoofdmenu om twee steden te vergelijken.\n\nDruk hier op OK om de temperatuuroverlay in of uit te schakelen: %s"
 

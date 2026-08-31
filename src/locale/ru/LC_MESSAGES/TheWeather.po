@@ -89,9 +89,6 @@ msgstr "Морось"
 msgid "E"
 msgstr "В"
 
-msgid "Enter cityname e.g. london or london_gb or london-2643743"
-msgstr "Введите название города, например: london, london_gb или london-2643743"
-
 msgid "Europe"
 msgstr "Европа"
 
@@ -148,23 +145,6 @@ msgstr "Удалить локацию"
 
 msgid "Location:"
 msgstr "Локация:"
-
-msgid ""
-Manual adding Citynumbers:\n
-Go to www.bbc.com/weather\n
-Search city and find citycode in the internetlink.\n
-\n
-Go back to \Location +\" and add cityname-number e.g.\n"
-\Dusseldorf-2934246\" or \"Dusseld-2934246\"\n"
-Don't forget the \-\" sign."
-msgstr ""
-Ручное добавление кода города:\n
-Перейдите на сайт www.bbc.com/weather\n
-Найдите город и посмотрите его код в адресной строке.\n
-\n
-Вернитесь в меню \Добавить локацию\" и введите название-код города, например:\n"
-\Dusseldorf-2934246\" или \"Dusseld-2934246\".\n"
-Не забудьте знак \-\"."
 
 msgid "Mist radar"
 msgstr "Радар тумана"
@@ -367,9 +347,20 @@ msgstr "Упс!\nМедленное интернет-соединение или
 msgid "Wind: "
 msgstr "Ветер: "
 
-msgid "Tip!\n"
-"Press the hidden Yellow button in the main menu to change the background.\n\n"
-"Press the hidden Green button in the main menu to change the hour interval."
-msgstr "Совет!\n"
-"Нажмите скрытую жёлтую кнопку в главном меню, чтобы изменить фон.\n\n"
-"Нажмите скрытую зелёную кнопку в главном меню, чтобы изменить часовой интервал."
+msgid "Loading radar..."
+msgstr "Загрузка радара..."
+
+msgid "Please wait..."
+msgstr "Пожалуйста, подождите..."
+
+msgid "Map zoom: %s"
+msgstr "Масштаб карты: %s"
+
+msgid "Tip!\nPress the hidden Yellow button in the main menu to open the RainRadar.\n\nPress the hidden Green button in the main menu to change the hour interval.\n\nPress the hidden Blue button in the main menu to compare two cities.\n\nPress OK here to toggle the temperature overlay: %s"
+msgstr "Совет!\nНажмите скрытую жёлтую кнопку в главном меню, чтобы открыть радар осадков.\n\nНажмите скрытую зелёную кнопку в главном меню, чтобы изменить часовой интервал.\n\nНажмите скрытую синюю кнопку в главном меню, чтобы сравнить два города.\n\nНажмите здесь OK, чтобы включить/выключить наложение температуры: %s"
+
+msgid "ON"
+msgstr "ВКЛ"
+
+msgid "OFF"
+msgstr "ВЫКЛ"

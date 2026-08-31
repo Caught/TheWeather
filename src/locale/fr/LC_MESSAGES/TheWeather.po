@@ -14,7 +14,7 @@ msgstr ""
 "X-Poedit-KeywordsList: _;gettext;gettext_noop\n"
 "X-Poedit-Basepath: ../../..\n"
 "X-Poedit-SourceCharset: UTF-8\n"
-"X-Generator: Poedit 3.0.1\n"
+"X-Generator: Poedit 1.8.6\n"
 "X-Poedit-SearchPath-0: .\n"
 
 msgid "Mo"
@@ -92,9 +92,6 @@ msgstr "Bruine"
 msgid "E"
 msgstr "E"
 
-msgid "Enter cityname e.g. london or london_gb or london-2643743"
-msgstr "Entrez le nom de la ville, ex. london ou london_gb ou london-2643743"
-
 msgid "Europe"
 msgstr "Europe"
 
@@ -151,23 +148,6 @@ msgstr "Supprimer un lieu"
 
 msgid "Location:"
 msgstr "Lieu :"
-
-msgid ""
-Manual adding Citynumbers:\n
-Go to www.bbc.com/weather\n
-Search city and find citycode in the internetlink.\n
-\n
-Go back to \Location +\" and add cityname-number e.g.\n"
-\Dusseldorf-2934246\" or \"Dusseld-2934246\"\n"
-Don't forget the \-\" sign."
-msgstr ""
-Ajout manuel des codes de ville :\n
-Allez sur www.bbc.com/weather\n
-Recherchez la ville et trouvez son code dans le lien internet.\n
-\n
-Revenez à \Ajouter un lieu\" et ajoutez le nom-numéro de la ville, ex.\n"
-\Dusseldorf-2934246\" ou \"Dusseld-2934246\".\n"
-N'oubliez pas le signe \-\"."
 
 msgid "Mist radar"
 msgstr "Radar de brume"
@@ -307,8 +287,12 @@ msgstr "Forte pluie !"
 msgid "Heavy storm!"
 msgstr "Forte tempête !"
 
-msgid "Icon pack changed.\nThe plugin will restart..."
-msgstr "Pack d'icônes modifié.\nLe plugin va redémarrer..."
+msgid ""
+"Icon pack changed.\n"
+"The plugin will restart..."
+msgstr ""
+"Pack d'icônes modifié.\n"
+"Le plugin va redémarrer..."
 
 msgid "Loading background image, please wait..."
 msgstr "Chargement de l'image de fond, veuillez patienter..."
@@ -322,8 +306,12 @@ msgstr "Pas de 2e lieu"
 msgid "No info"
 msgstr "Pas d'information"
 
-msgid "No saved cities found.\nFirst add cities via the location screen."
-msgstr "Aucune ville enregistrée.\nAjoutez d'abord des villes via l'écran des lieux."
+msgid ""
+"No saved cities found.\n"
+"First add cities via the location screen."
+msgstr ""
+"Aucune ville enregistrée.\n"
+"Ajoutez d'abord des villes via l'écran des lieux."
 
 msgid "Not found"
 msgstr "Non trouvé"
@@ -364,16 +352,32 @@ msgstr "Très forte pluie !"
 msgid "Warm weather!"
 msgstr "Temps chaud !"
 
-msgid "Whoops!\nSlow or no Internet connection\nPlease try again"
-msgstr "Oups !\nConnexion Internet lente ou inexistante\nVeuillez réessayer"
+msgid ""
+"Whoops!\n"
+"Slow or no Internet connection\n"
+"Please try again"
+msgstr ""
+"Oups !\n"
+"Connexion Internet lente ou inexistante\n"
+"Veuillez réessayer"
 
 msgid "Wind: "
 msgstr "Vent : "
 
-msgid "Tip!\n"
-"Press the hidden Yellow button in the main menu to change the background.\n\n"
-"Press the hidden Green button in the main menu to change the hour interval."
-msgstr "Astuce !\n"
-"Appuyez sur la touche jaune cachée du menu principal pour changer le fond d'écran\n\n"
-"Appuyez sur la touche verte cachée du menu principal pour changer l'intervalle d'heures."
+msgid "Loading radar..."
+msgstr "Chargement du radar..."
 
+msgid "Please wait..."
+msgstr "Veuillez patienter..."
+
+msgid "Map zoom: %s"
+msgstr "Zoom de la carte : %s"
+
+msgid "Tip!\nPress the hidden Yellow button in the main menu to open the RainRadar.\n\nPress the hidden Green button in the main menu to change the hour interval.\n\nPress the hidden Blue button in the main menu to compare two cities.\n\nPress OK here to toggle the temperature overlay: %s"
+msgstr "Astuce !\nAppuyez sur le bouton jaune caché dans le menu principal pour ouvrir le radar de pluie.\n\nAppuyez sur le bouton vert caché dans le menu principal pour changer l'intervalle horaire.\n\nAppuyez sur le bouton bleu caché dans le menu principal pour comparer deux villes.\n\nAppuyez sur OK ici pour activer/désactiver la superposition de température : %s"
+
+msgid "ON"
+msgstr "ACTIVÉ"
+
+msgid "OFF"
+msgstr "DÉSACTIVÉ"

@@ -92,9 +92,6 @@ msgstr "细雨"
 msgid "E"
 msgstr "东"
 
-msgid "Enter cityname e.g. london or london_gb or london-2643743"
-msgstr "输入城市名称，例如 london 或 london_gb 或 london-2643743"
-
 msgid "Europe"
 msgstr "欧洲"
 
@@ -151,23 +148,6 @@ msgstr "删除地点"
 
 msgid "Location:"
 msgstr "地点:"
-
-msgid ""
-"Manual adding Citynumbers:\n"
-"Go to www.bbc.com/weather\n"
-"Search city and find citycode in the internetlink.\n"
-"\n"
-"Go back to \"Location +\" and add cityname-number e.g.\n"
-"\"Dusseldorf-2934246\" or \"Dusseld-2934246\"\n"
-"Don't forget the \"-\" sign."
-msgstr ""
-"手动添加城市代码：\n"
-"访问 www.bbc.com/weather\n"
-"搜索城市并在网络链接中找到城市代码。\n"
-"\n"
-"返回 \"添加地点\" 并添加“城市名称-代码”，例如：\n"
-"\"Dusseldorf-2934246\" 或 \"Dusseld-2934246\"。\n"
-"请不要忘记 \"-\" 符号。"
 
 msgid "Mist radar"
 msgstr "大雾雷达"
@@ -370,9 +350,20 @@ msgstr "哎呀！\n网络连接缓慢或断开\n请重试"
 msgid "Wind: "
 msgstr "风速: "
 
-msgid "Tip!\n"
-"Press the hidden Yellow button in the main menu to change the background.\n\n"
-"Press the hidden Green button in the main menu to change the hour interval."
-msgstr "提示！\n"
-"在主菜单中按隐藏的黄色按钮以更改背景。\n\n"
-"在主菜单中按隐藏的绿色按钮以更改小时间隔。"
+msgid "Loading radar..."
+msgstr "正在加载雷达..."
+
+msgid "Please wait..."
+msgstr "请稍候..."
+
+msgid "Map zoom: %s"
+msgstr "地图缩放：%s"
+
+msgid "Tip!\nPress the hidden Yellow button in the main menu to open the RainRadar.\n\nPress the hidden Green button in the main menu to change the hour interval.\n\nPress the hidden Blue button in the main menu to compare two cities.\n\nPress OK here to toggle the temperature overlay: %s"
+msgstr "提示！\n按下主菜单中隐藏的黄色按钮以打开降雨雷达。\n\n按下主菜单中隐藏的绿色按钮以更改小时间隔。\n\n按下主菜单中隐藏的蓝色按钮以比较两个城市。\n\n在此按确定以切换温度叠加层：%s"
+
+msgid "ON"
+msgstr "开"
+
+msgid "OFF"
+msgstr "关"

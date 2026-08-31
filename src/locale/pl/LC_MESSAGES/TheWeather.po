@@ -88,9 +88,6 @@ msgstr "Mżawka"
 msgid "E"
 msgstr "E"
 
-msgid "Enter cityname e.g. london or london_gb or london-2643743"
-msgstr "Wpisz nazwę miasta, np. london lub london_gb lub london-2643743"
-
 msgid "Europe"
 msgstr "Europa"
 
@@ -147,23 +144,6 @@ msgstr "Lokalizacja -"
 
 msgid "Location:"
 msgstr "Lokalizacja:"
-
-msgid ""
-Manual adding Citynumbers:\n
-Go to www.bbc.com/weather\n
-Search city and find citycode in the internetlink.\n
-\n
-Go back to \Location +\" and add cityname-number e.g.\n"
-\Dusseldorf-2934246\" or \"Dusseld-2934246\"\n"
-Don't forget the \-\" sign."
-msgstr ""
-Ręczne dodawanie numerów miast:\n
-Przejdź do www.bbc.com/weather\n
-Wyszukaj miasto i znajdź jego kod w linku internetowym.\n
-\n
-Wróć do \Lokalizacja +\" i dodaj nazwę z numerem miasta, np.\n"
-\Dusseldorf-2934246\" lub \"Dusseld-2934246\".\n"
-Nie zapomnij o znaku \-\"."
 
 msgid "Mist radar"
 msgstr "Radar mgły"
@@ -366,9 +346,20 @@ msgstr "Ups!\nPowolne połączenie internetowe lub jego brak\nSpróbuj ponownie"
 msgid "Wind: "
 msgstr "Wiatr: "
 
-msgid "Tip!\n"
-"Press the hidden Yellow button in the main menu to change the background.\n\n"
-"Press the hidden Green button in the main menu to change the hour interval."
-msgstr "Wskazówka!\n"
-"Naciśnij ukryty żółty przycisk w menu głównym, aby zmienić tło.\n\n"
-"Naciśnij ukryty zielony przycisk w menu głównym, aby zmienić interwał godzinowy."
+msgid "Loading radar..."
+msgstr "Ładowanie radaru..."
+
+msgid "Please wait..."
+msgstr "Proszę czekać..."
+
+msgid "Map zoom: %s"
+msgstr "Powiększenie mapy: %s"
+
+msgid "Tip!\nPress the hidden Yellow button in the main menu to open the RainRadar.\n\nPress the hidden Green button in the main menu to change the hour interval.\n\nPress the hidden Blue button in the main menu to compare two cities.\n\nPress OK here to toggle the temperature overlay: %s"
+msgstr "Wskazówka!\nNaciśnij ukryty żółty przycisk w menu głównym, aby otworzyć radar opadów.\n\nNaciśnij ukryty zielony przycisk w menu głównym, aby zmienić interwał godzinowy.\n\nNaciśnij ukryty niebieski przycisk w menu głównym, aby porównać dwa miasta.\n\nNaciśnij tutaj OK, aby przełączyć nakładkę temperatury: %s"
+
+msgid "ON"
+msgstr "WŁĄCZONE"
+
+msgid "OFF"
+msgstr "WYŁĄCZONE"

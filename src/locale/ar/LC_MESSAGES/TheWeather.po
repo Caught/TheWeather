@@ -89,9 +89,6 @@ msgstr "رذاذ"
 msgid "E"
 msgstr "الشرق"
 
-msgid "Enter cityname e.g. london or london_gb or london-2643743"
-msgstr "أدخل اسم المدينة على سبيل المثال london أو london_gb أو london-2643743"
-
 msgid "Europe"
 msgstr "أوروبا"
 
@@ -148,23 +145,6 @@ msgstr "موقع -"
 
 msgid "Location:"
 msgstr "موقع:"
-
-msgid ""
-Manual adding Citynumbers:\n
-Go to www.bbc.com/weather\n
-Search city and find citycode in the internetlink.\n
-\n
-Go back to \Location +\" and add cityname-number e.g.\n"
-\Dusseldorf-2934246\" or \"Dusseld-2934246\"\n"
-Don't forget the \-\" sign."
-msgstr ""
-إضافة أرقام المدينة يدويًا:\n
-انتقل إلى www.bbc.com/weather\n
-ابحث عن المدينة وابحث عن رمز المدينة في رابط الإنترنت.\n
-\n
-ارجع إلى \الموقع +\" وأضف اسم المدينة ، على سبيل المثال\n"
-\Dusseldorf-2934246\" أو \"Dusseld-2934246\"\n"
-لا تنسى علامة \-\"."
 
 msgid "Mist radar"
 msgstr "تنبؤ  بالضباب"
@@ -310,9 +290,6 @@ msgstr "تم تغيير حزمة الأيقونات.\nسيتم إعادة تشغ
 msgid "Loading background image, please wait..."
 msgstr "جاري تحميل صورة الخلفية، يرجى الانتظار..."
 
-msgid "Loading..."
-msgstr "جاري التحميل..."
-
 msgid "No 2nd location"
 msgstr "لا يوجد موقع ثانٍ"
 
@@ -367,12 +344,26 @@ msgstr "عذراً!\nالاتصال بالإنترنت بطيء أو مقطوع\
 msgid "Wind: "
 msgstr "الرياح: "
 
-msgid "Tip!\n"
-"Press the hidden Yellow button in the main menu to change the background.\n\n"
-"Press the hidden Green button in the main menu to change the hour interval."
-msgstr "تلميح!\n"
-"اضغط على الزر الأصفر المخفي في القائمة الرئيسية لتغيير الخلفية.\n\n"
-"اضغط على الزر الأخضر المخفي في القائمة الرئيسية لتغيير الفاصل الزمني بالساعات."
+msgid "Loading radar..."
+msgstr "جارٍ تحميل الرادار..."
+
+msgid "Please wait..."
+msgstr "يرجى الانتظار..."
+
+msgid "Loading..."
+msgstr "جارٍ التحميل..."
+
+msgid "Map zoom: %s"
+msgstr "تكبير الخريطة: %s"
+
+msgid "Tip!\nPress the hidden Yellow button in the main menu to open the RainRadar.\n\nPress the hidden Green button in the main menu to change the hour interval.\n\nPress the hidden Blue button in the main menu to compare two cities.\n\nPress OK here to toggle the temperature overlay: %s"
+msgstr "نصيحة!\nاضغط على الزر الأصفر المخفي في القائمة الرئيسية لفتح رادار الأمطار.\n\nاضغط على الزر الأخضر المخفي في القائمة الرئيسية لتغيير الفاصل الزمني بالساعات.\n\nاضغط على الزر الأزرق المخفي في القائمة الرئيسية لمقارنة مدينتين.\n\nاضغط هنا على \"موافق\" لتبديل تراكب درجة الحرارة: %s"
+
+msgid "ON"
+msgstr "تشغيل"
+
+msgid "OFF"
+msgstr "إيقاف"
 
 
 

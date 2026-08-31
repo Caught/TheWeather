@@ -1,19 +1,25 @@
-#Deb v.3.0
+#v.3.51
 import os
 import time
 import json
+import math
+import shutil
 import gettext
 import datetime
 from enigma import gRGB
 from enigma import eTimer
+from enigma import ePoint
+from enigma import loadPNG
 from Screens.Screen import Screen
 from Components.Label import Label
 from time import strftime, localtime
+from Components.config import config
 from Screens.ChoiceBox import ChoiceBox
 from enigma import ePicLoad, getDesktop
 from Components.MenuList import MenuList
 from Components.Language import language
 from Screens.MessageBox import MessageBox
+from Screens.InfoBar import InfoBar
 from Plugins.Plugin import PluginDescriptor
 from Components.Pixmap import Pixmap, MovingPixmap
 from Screens.VirtualKeyBoard import VirtualKeyBoard
@@ -42,7 +48,27 @@ else:
     import cookielib
 # add Lululla end
 
-version = '3.0'
+def safeStr(value):
+    if value is None:
+        return ""
+    if not PY3 and isinstance(value, unicode):
+        return value.encode("utf-8")
+    return str(value)
+
+def stripCoords(value):
+    return safeStr(value).split("|", 1)[0]
+
+
+def getCoordsFromEntry(value):
+    parts = safeStr(value).split("|")
+    if len(parts) == 3:
+        try:
+            return float(parts[1]), float(parts[2])
+        except ValueError:
+            return None, None
+    return None, None
+
+version = '3.51'
 PluginLanguageDomain = "FileBrowser"
 PluginLanguagePath = "Extensions/TheWeather/locale/"
 OAWeather = resolveFilename(SCOPE_PLUGINS, "Extensions/{}".format('OAWeather'))
@@ -53,9 +79,9 @@ gettext.textdomain("enigma2")
 gettext.bindtextdomain("TheWeather", "%s%s" % (resolveFilename(SCOPE_PLUGINS), "Extensions/TheWeather/locale/"))
 
 icoonpath = "Images"
-backgroundpath = "" 
+SHARED_PACK = "Images"
+backgroundpath = ""
 CFG_DIR = "/etc/enigma2/TheWeather"
-
 
 def _(txt):
     t = gettext.dgettext("TheWeather", txt)
@@ -63,16 +89,85 @@ def _(txt):
         t = gettext.gettext(txt)
     return t
 
+def _detectCanvasWidth():
+    try:
+        return getDesktop(0).size().width()
+    except Exception:
+        return 1920
 
 weatherData = []
 screens = []
 _restartTimer = None
 _restartTimerConn = None
 _restartInProgress = False
+_overlayScreen = None
+_overlayEnabled = False
+_overlayInfoscreenOpen = False
+_overlaySession = None
+OVERLAY_CFG = CFG_DIR + "/TheWeather_overlay.cfg"
+
+def _readOverlayConfig():
+    try:
+        with open(OVERLAY_CFG) as f:
+            return f.read().strip() == "1"
+    except Exception:
+        return False
+
+def _overlayCheckVisibility():
+    global _overlayScreen, _overlayEnabled, _overlaySession
+    if _overlayScreen is None:
+        return
+    try:
+        cur_w = _detectCanvasWidth()
+        if _overlayScreen.instance:
+            try:
+                _overlayScreen.instance.move(ePoint(cur_w - 70 - 0, 0))
+            except Exception as e:
+                print("[TheWeather] reposition fout:", e)
+            try:
+                _overlayScreen.instance.setZPosition(1000)
+            except Exception as e:
+                print("[TheWeather] setZPosition fout:", e)
+        liveTv = False
+        try:
+            liveTv = InfoBar.instance is not None
+        except Exception:
+            liveTv = False
+        topScreen = screens[-1] if screens else None
+        topIsInfoscreen = isinstance(topScreen, infoscreen)
+        anyPluginScreenOpen = len(screens) > 0
+
+        systemMenuOpen = False
+        try:
+            if _overlaySession is not None:
+                cd = _overlaySession.current_dialog
+                print("[TheWeather] current_dialog =", cd, " InfoBar.instance =", InfoBar.instance)
+                if cd is not None and cd is not InfoBar.instance:
+                    systemMenuOpen = True
+        except Exception as e:
+            print("[TheWeather] systemMenuOpen check fout:", e)   
+
+        print("[TheWeather] DEBUG liveTv=%s topIsInfoscreen=%s anyPluginScreenOpen=%s systemMenuOpen=%s enabled=%s" % (liveTv, topIsInfoscreen, anyPluginScreenOpen, systemMenuOpen, _overlayEnabled))
+        if _overlayEnabled and (topIsInfoscreen or (liveTv and not anyPluginScreenOpen and not systemMenuOpen)):
+            _overlayScreen.show()
+        else:
+            _overlayScreen.hide()
+    except Exception as e:
+        print("[TheWeather] _overlayCheckVisibility: fout:", e)
 
 
 def _doIconpackRestart(session):
     main(session)
+
+def _updateOverlayFromWeatherData():
+    global _overlayScreen
+    if _overlayScreen is None:
+        return
+    try:
+        temp = weatherData["days"][0]["hours"][0]["temperature"]
+        _overlayScreen["overlay_temp"].setText("%s\xb0C" % int(round(temp)))
+    except Exception as e:
+        print("[TheWeather] _updateOverlayFromWeatherData: fout:", e)
 
 SavedLokaleWeer = []
 lockaaleStad = ""
@@ -83,17 +178,12 @@ sz_h = getDesktop(0).size().height()
 
 def getLocWeer(iscity=None):
     global weatherData
-    inputCity = iscity
     global lockaaleStad, citynamedisplay
-    mydata = []
-
-    lockaaleStad = inputCity
-    mydata = inputCity
+    lockaaleStad = iscity
+    mydata = stripCoords(iscity)
     match = None
     try:
-        citynumb = int(mydata.split("-")[1])
-        # response = urllib.request.urlopen("http://api.buienradar.nl/data/forecast/1.1/all/" + str(citynumb))
-        # antw = response.read()
+        citynumb = int(mydata.rsplit("-", 1)[1])
         
         # add Lululla edit
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36'}
@@ -104,9 +194,9 @@ def getLocWeer(iscity=None):
         handler = urllib2.urlopen(req, timeout=15)
         antw = handler.read()
         # add Lululla edit end
-        
         weatherData = json.loads(antw)
-        citynamedisplay = str(mydata.split("-")[0])
+        citynamedisplay = str(mydata.rsplit("-", 1)[0])
+        _updateOverlayFromWeatherData()
         return True
     except:
         try:
@@ -125,8 +215,6 @@ def getLocWeer(iscity=None):
             handler = urllib2.urlopen(req, timeout=15)
             antw = handler.read()
             # add Lululla edit end
-            # response = urllib2.urlopen("https://location.buienradar.nl/1.1/location/search?query=" + citynamenewy)
-            # antw = response.read()
             staddata = json.loads(antw)
             entryselect = 0
             entrselect = 0
@@ -141,11 +229,10 @@ def getLocWeer(iscity=None):
             req = urllib2.Request("https://forecast.buienradar.nl/2.0/forecast/" + str(staddata[entryselect]["id"]), data=None, headers=headers)
             handler = urllib2.urlopen(req, timeout=15)
             antw = handler.read()
-            # response = urllib2.urlopen("https://forecast.buienradar.nl/2.0/forecast/" + str(staddata[entryselect]["id"]))
-            # antw = response.read()
             weatherData = json.loads(antw)
             citynamedisplay = staddata[entryselect]["name"] + "  " + staddata[entryselect]["countrycode"]
 
+            _updateOverlayFromWeatherData()
             return True
         except Exception as e:
             print(e)
@@ -153,9 +240,9 @@ def getLocWeer(iscity=None):
 
 
 def getLocWeerFor(inputCity):
-    
+    inputCity = stripCoords(inputCity)
     try:
-        citynumb = int(inputCity.split("-")[1])
+        citynumb = int(inputCity.rsplit("-", 1)[1])
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36'}
         cookie_jar = cookielib.CookieJar()
         opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cookie_jar))
@@ -164,7 +251,7 @@ def getLocWeerFor(inputCity):
         handler = urllib2.urlopen(req, timeout=15)
         antw = handler.read()
         data = json.loads(antw)
-        naam = str(inputCity.split("-")[0])
+        naam = str(inputCity.rsplit("-", 1)[0])
         return data, naam
     except:
         try:
@@ -408,7 +495,7 @@ class sevendays(Screen):
         else:
             peocpic = "tempeven.png"
         peocpichd = """<ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/windhd/%s" position="1112,143" size="90,80" zPosition="2" transparent="0" alphatest="blend"/>""" % (peocpic)
-        peocpicsd = """<ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/wind/%s" position="752,99" size="60,53" zPosition="2" transparent="0" alphatest="on"/>""" % (peocpic)
+        peocpicsd = """<ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/windhd/%s" position="752,99" size="60,53" scale="1" zPosition="2" transparent="0" alphatest="on"/>""" % (peocpic)
         if sz_w > 1800:
             for day in range(0, 7):
                 uurcount = 0
@@ -443,13 +530,13 @@ class sevendays(Screen):
                 yposline = (1200-(curtemp*31))-lineheight
                 dayinfoblok += """
                     <widget name="bigWeerIcon1""" + str(day) + """" position="636,102" size="150,150" pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/iconbighd/""" + str(dataUrr) + """.png" zPosition="3" alphatest="blend"/>
-                    <widget name="bigDirIcon1""" + str(day) + """" position="1170,343" size="42,42" pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/windhd/""" + str(windkracht) + """.png" zPosition="1" alphatest="blend"/>
+                    <widget name="bigDirIcon1""" + str(day) + """" position="1170,343" size="42,42" scale="1" pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/windhd/""" + str(windkracht) + """.png" zPosition="1" alphatest="blend"/>
                     <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/iconhd/""" + str(losticon) + """.png" position=\"""" + str(131 + (248 * day)) + """,498" size="72,72" zPosition="3" transparent="0" alphatest="blend"/>
-                    <widget render="Label" source="smallday2""" + str(day) + """" position=\"""" + str(138 + (248 * day)) + """,461" size="135,40" zPosition="3" valign="center" halign="left" font="Regular;34" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <widget render="Label" source="maxtemp2""" + str(day) + """" position=\"""" + str(130 + (248 * day)) + """,571" size="90,54" zPosition="3" font="Regular;48" transparent="1" shadowColor="black" shadowOffset="-2,-2" />
-                    <widget render="Label" source="minitemp2""" + str(day) + """" position=\"""" + str(240 + (248 * day)) + """,587" size="90,36" zPosition="3" valign="center" halign="left" font="Regular;28" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <widget render="Label" source="weertype2""" + str(day) + """" position=\"""" + str(99 + (248 * day)) + """,617" size="220,86" zPosition="3" valign="center" halign="center" font="Regular;24" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <widget render="Label" source="sunriselab" position="625,362" size="200,40" zPosition="3" font="Regular;28" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget render="Label" source="smallday2""" + str(day) + """" position=\"""" + str(138 + (248 * day)) + """,461" size="135,40" zPosition="3" valign="center" halign="left" font="Regular;34" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget render="Label" source="maxtemp2""" + str(day) + """" position=\"""" + str(130 + (248 * day)) + """,571" size="90,54" zPosition="3" font="Regular;48" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2" />
+                    <widget render="Label" source="minitemp2""" + str(day) + """" position=\"""" + str(240 + (248 * day)) + """,587" size="90,36" zPosition="3" valign="center" halign="left" font="Regular;28" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget render="Label" source="weertype2""" + str(day) + """" position=\"""" + str(99 + (248 * day)) + """,617" size="220,86" zPosition="3" valign="center" halign="center" font="Regular;24" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget render="Label" source="sunriselab" position="625,362" size="200,40" zPosition="3" font="Regular;28" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
                     <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/iconhd/sunupdownhd.png" zPosition="3" position="650,295" size="120,60" alphatest="blend"/>"""
                 dataUrr = dataDagen[day]["hours"]
                 self["bigWeerIcon1" + str(day)] = Pixmap()
@@ -467,14 +554,14 @@ class sevendays(Screen):
 
             for uur in range(0, 8):
                 slotNr = uur
-                dayinfoblok += """<widget name="vlakuur""" + str(slotNr) + """" position=\"""" + str(98 + (216 * slotNr)) + """,736" size="191,305" pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/patches/vlak_uur""" + str(slotNr) + """.png" zPosition="0" alphatest="blend"/>"""
+                dayinfoblok += """<widget name="vlakuur""" + str(slotNr) + """" position=\"""" + str(98 + (216 * slotNr)) + """,736" size="191,305" pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/patches/vlak_uur.png" zPosition="0" alphatest="blend"/>"""
                 dayinfoblok += """
-                    <widget render="Label" source="dayhour3""" + str(uur) + """" position=\"""" + str(225 + (216 * uur)) + """,757" size="65,42" zPosition="3" valign="center" halign="left" font="Regular;33" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <widget render="Label" source="daytemp3""" + str(uur) + """" position=\"""" + str(120 + (216 * uur)) + """,820" size="180,54" zPosition="3" valign="center" halign="left" font="Regular;48" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <widget render="Label" source="sunpercent3""" + str(uur) + """" position=\"""" + str(168 + (216 * uur)) + """,883" size="123,32" zPosition="3" valign="center" halign="left" font="Regular;27" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <widget render="Label" source="daypercent3""" + str(uur) + """" position=\"""" + str(168 + (216 * uur)) + """,922" size="120,30" zPosition="3" valign="center" halign="left" font="Regular;27" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <widget render="Label" source="hrdayper3""" + str(uur) + """" position=\"""" + str(168 + (216 * uur)) + """,961" size="123,32" zPosition="3" valign="center" halign="left" font="Regular;27" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <widget render="Label" source="dayspeed3""" + str(uur) + """" position=\"""" + str(168 + (216 * uur)) + """,1000" size="123,32" zPosition="3" valign="center" halign="left" font="Regular;27" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget render="Label" source="dayhour3""" + str(uur) + """" position=\"""" + str(225 + (216 * uur)) + """,757" size="65,42" zPosition="3" valign="center" halign="left" font="Regular;33" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget render="Label" source="daytemp3""" + str(uur) + """" position=\"""" + str(120 + (216 * uur)) + """,820" size="180,54" zPosition="3" valign="center" halign="left" font="Regular;48" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget render="Label" source="sunpercent3""" + str(uur) + """" position=\"""" + str(168 + (216 * uur)) + """,883" size="123,32" zPosition="3" valign="center" halign="left" font="Regular;27" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget render="Label" source="daypercent3""" + str(uur) + """" position=\"""" + str(168 + (216 * uur)) + """,922" size="120,30" zPosition="3" valign="center" halign="left" font="Regular;27" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget render="Label" source="hrdayper3""" + str(uur) + """" position=\"""" + str(168 + (216 * uur)) + """,961" size="123,32" zPosition="3" valign="center" halign="left" font="Regular;27" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget render="Label" source="dayspeed3""" + str(uur) + """" position=\"""" + str(168 + (216 * uur)) + """,1000" size="123,32" zPosition="3" valign="center" halign="left" font="Regular;27" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
                     <widget name="sunicon""" + str(uur) + """" position=\"""" + str(114 + (216 * uur)) + """,879" size="36,36" zPosition="3" pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/windhd/sunpchd.png" alphatest="blend"/>
                     <widget name="rainicon""" + str(uur) + """" position=\"""" + str(116 + (216 * uur)) + """,921" size="30,30" zPosition="3" pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/windhd/rainhd.png" alphatest="blend"/>
                     <widget name="rhicon""" + str(uur) + """" position=\"""" + str(120 + (216 * uur)) + """,960" size="23,30" zPosition="3" pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/windhd/rhhd.png" alphatest="blend"/>
@@ -491,23 +578,23 @@ class sevendays(Screen):
                 self["hrdayper3" + str(uur)] = StaticText()
                 self["dayspeed3" + str(uur)] = StaticText()
             skin = """
-                    <screen name="sevenday" title="seven" flags="wfNoBorder" position="center,center" size="1920,1080">
+                    <screen name="sevenday" title="seven" flags="wfNoBorder" position="center,center" size="1920,1080" backgroundColor="#ff000000">
                     <widget name="bgpic" position="0,0" size="1920,1080" zPosition="-1" alphatest="blend"/>
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/backgroundhd.png" position="center,center" size="1920,1080" zPosition="0" alphatest="blend"/>
-                    <widget source="global.CurrentTime" render="Label" position="1634,35" size="225,45" transparent="1" zPosition="1" font="Regular;36" valign="center" halign="right"><convert type="ClockToText">Format:%-H:%M</convert></widget>
-                    <widget source="global.CurrentTime" render="Label" position="1409,72" size="450,35" transparent="1" zPosition="1" font="Regular;24" valign="center" halign="right"><convert type="ClockToText">Format:%a %d/%m/%y</convert></widget>
-                    <widget name="yellowdot" position="275,463" size="36,36" pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/buttons/yeldothd.png" zPosition="3" alphatest="blend"/>
-                    <widget render="Label" source="city1" position="608,44" size="705,64" zPosition="3" valign="center" halign="center" font="Regular;48" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <widget render="Label" source="bigtemp1" position="870,122" size="353,118" zPosition="3" valign="center" halign="left" font="Regular;108" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <widget render="Label" source="bigweathertype1" position="870,298" size="480,40" zPosition="3" valign="center" halign="left" font="Regular;28" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <widget render="Label" source="GevoelsTemp1" position="870,250" size="354,40" zPosition="3" valign="center" halign="left" font="Regular;28" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <widget render="Label" source="winddir1" position="870,346" size="345,40" zPosition="3" valign="center" halign="left" font="Regular;28" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <widget name="weatheralertbg1" position="1322,240" size="588,72" zPosition="2" pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/alert/vlak_alert.png" alphatest="on"/>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/backgroundhd.png" position="center,center" size="1920,1080" zPosition="0" alphatest="blend"/>
+                    <widget source="global.CurrentTime" render="Label" position="1634,35" size="225,45" transparent="1" zPosition="1" font="Regular;36" foregroundColor="#00ffffff" backgroundColor="#00202020" valign="center" halign="right"><convert type="ClockToText">Format:%-H:%M</convert></widget>
+                    <widget source="global.CurrentTime" render="Label" position="1409,72" size="450,35" transparent="1" zPosition="1" font="Regular;24" foregroundColor="#00ffffff" backgroundColor="#00202020" valign="center" halign="right"><convert type="ClockToText">Format:%a %d/%m/%y</convert></widget>
+                    <widget name="yellowdot" position="275,463" size="36,36" pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/yeldothd.png" zPosition="3" alphatest="blend"/>
+                    <widget render="Label" source="city1" position="608,44" size="705,64" zPosition="3" valign="center" halign="center" font="Regular;48" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget render="Label" source="bigtemp1" position="870,122" size="353,118" zPosition="3" valign="center" halign="left" font="Regular;108" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget render="Label" source="bigweathertype1" position="870,298" size="480,40" zPosition="3" valign="center" halign="left" font="Regular;28" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget render="Label" source="GevoelsTemp1" position="870,250" size="354,40" zPosition="3" valign="center" halign="left" font="Regular;28" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget render="Label" source="winddir1" position="870,346" size="345,40" zPosition="3" valign="center" halign="left" font="Regular;28" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget name="weatheralertbg1" position="1322,240" size="588,72" zPosition="2" pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/alert/vlak_alert.png" alphatest="on"/>
                     <widget name="weatheralerticon1" position="1332,244" size="64,64" zPosition="4" alphatest="blend" transparent="1"/>
-                    <widget name="weatheralert1" position="1440,244" size="576,64" zPosition="3" valign="center" halign="left" font="Regular;48" transparent="1" foregroundColor="#00ffffff" shadowColor="black" shadowOffset="-2,-2"/>""" + peocpichd + dayinfoblok + """
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/buttons/bluebutton.png" position="1604,46" size="90,54" zPosition="3" alphatest="blend"/>
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/buttons/menubutton.png" position="1423,46" size="90,54" zPosition="3" alphatest="blend"/>
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/buttons/okbutton.png" position="1531,46" size="54,54" zPosition="3" alphatest="blend"/>
+                    <widget name="weatheralert1" position="1440,244" size="576,64" zPosition="3" valign="center" halign="left" font="Regular;48" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>""" + peocpichd + dayinfoblok + """
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/buttonx.png" position="1604,46" size="54,54" zPosition="3" alphatest="blend"/>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/menubutton.png" position="1423,46" size="90,54" zPosition="3" alphatest="blend"/>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/okbutton.png" position="1531,46" size="54,54" zPosition="3" alphatest="blend"/>
                     </screen>"""
         else:
             for day in range(0, 7):
@@ -542,15 +629,15 @@ class sevendays(Screen):
                     lineheight = tempdiff*31
                 yposline = (1200-(curtemp*31))-lineheight
                 dayinfoblok += """
-                    <widget name="bigWeerIcon1""" + str(day) + """" position="422,76" size="100,100" pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/iconbigsd/""" + str(dataUrr) + """.png" zPosition="3" alphatest="blend"/>
-                    <widget name="bigDirIcon1""" + str(day) + """" position="778,234" size="28,28" pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/wind/""" + str(windkracht) + """.png" zPosition="1" alphatest="blend"/>
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/icon/""" + str(losticon) + """.png" position=\"""" + str(87 + (165 * day)) + """,334" size="48,48" zPosition="3" transparent="0" alphatest="blend"/>
-                    <widget render="Label" source="smallday2""" + str(day) + """" position=\"""" + str(92 + (165 * day)) + """,308" size="90,24" zPosition="3" valign="center" halign="left" font="Regular;22" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <widget render="Label" source="maxtemp2""" + str(day) + """" position=\"""" + str(92 + (165 * day)) + """,382" size="60,36" zPosition="3" font="Regular;32" transparent="1" shadowColor="black" shadowOffset="-2,-2" />
-                    <widget render="Label" source="minitemp2""" + str(day) + """" position=\"""" + str(160 + (165 * day)) + """,395" size="32,22" zPosition="3" valign="center" halign="left" font="Regular;18" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <widget render="Label" source="weertype2""" + str(day) + """" position=\"""" + str(69 + (165 * day)) + """,416" size="138,44" zPosition="3" valign="center" halign="center" font="Regular;16" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <widget render="Label" source="sunriselab" position="416,248" size="200,40" zPosition="3" font="Regular;18" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/icon/sunupdownsd.png" zPosition="3" position="426,206" size="80,40" alphatest="blend"/>"""
+                    <widget name="bigWeerIcon1""" + str(day) + """" position="422,76" size="100,100" scale="1" pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/iconbighd/""" + str(dataUrr) + """.png" zPosition="3" alphatest="blend"/>
+                    <widget name="bigDirIcon1""" + str(day) + """" position="778,234" size="28,28" scale="1" pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/windhd/""" + str(windkracht) + """.png" zPosition="1" alphatest="blend"/>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/iconhd/""" + str(losticon) + """.png" position=\"""" + str(87 + (165 * day)) + """,328" size="48,48" scale="1" zPosition="3" transparent="0" alphatest="blend"/>
+                    <widget render="Label" source="smallday2""" + str(day) + """" position=\"""" + str(92 + (165 * day)) + """,302" size="90,24" zPosition="3" valign="center" halign="left" font="Regular;22" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget render="Label" source="maxtemp2""" + str(day) + """" position=\"""" + str(92 + (165 * day)) + """,376" size="60,36" zPosition="3" font="Regular;32" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2" />
+                    <widget render="Label" source="minitemp2""" + str(day) + """" position=\"""" + str(160 + (165 * day)) + """,389" size="32,22" zPosition="3" valign="center" halign="left" font="Regular;18" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget render="Label" source="weertype2""" + str(day) + """" position=\"""" + str(69 + (165 * day)) + """,410" size="138,54" zPosition="3" valign="center" halign="center" font="Regular;16" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget render="Label" source="sunriselab" position="416,248" size="200,40" zPosition="3" font="Regular;18" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/iconhd/sunupdownhd.png" zPosition="3" position="426,206" size="80,40" scale="1" alphatest="blend"/>"""
                 dataUrr = dataDagen[day]["hours"]
                 self["bigWeerIcon1" + str(day)] = Pixmap()
                 self["bigDirIcon1" + str(day)] = Pixmap()
@@ -561,24 +648,24 @@ class sevendays(Screen):
                 self["sunriselab" + str(day)] = StaticText()
                 for slotIdx in range(0, min(8, len(dataUrr))):
                     data = dataUrr[slotIdx]
-                    dayinfoblok += """<widget name="dayIcon""" + str(day) + "" + str(uurcount) + """" position=\"""" + str(80 + (144 * uurcount)) + """,494" size="48,48" pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/icon/"""+data["iconcode"]+""".png" zPosition="1" alphatest="blend"/>"""
+                    dayinfoblok += """<widget name="dayIcon""" + str(day) + "" + str(uurcount) + """" position=\"""" + str(80 + (144 * uurcount)) + """,494" size="48,48" scale="1" pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/iconhd/"""+data["iconcode"]+""".png" zPosition="1" alphatest="blend"/>"""
                     uurcount += 1
                     self["dayIcon" + str(day) + str(uurcount)] = Pixmap()
 
             for uur in range(0, 8):
                 slotNr = uur
-                dayinfoblok += """<widget name="vlakuur""" + str(slotNr) + """" position=\"""" + str(64 + (144 * slotNr)) + """,489" size="129,205" pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/patches/vlak_uursd""" + str(slotNr) + """.png" zPosition="0" alphatest="blend"/>"""
+                dayinfoblok += """<widget name="vlakuur""" + str(slotNr) + """" position=\"""" + str(64 + (144 * slotNr)) + """,489" size="129,205" pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/patches/vlak_uursd.png" zPosition="0" alphatest="blend"/>"""
                 dayinfoblok += """
-                    <widget render="Label" source="dayhour3""" + str(uur) + """" position=\"""" + str(146 + (144 * uur)) + """,506" size="42,28" zPosition="3" valign="center" halign="left" font="Regular;22" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <widget render="Label" source="daytemp3""" + str(uur) + """" position=\"""" + str(80 + (144 * uur)) + """,540" size="120,36" zPosition="3" valign="center" halign="left" font="Regular;32" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <widget render="Label" source="sunpercent3""" + str(uur) + """" position=\"""" + str(112 + (144 * uur)) + """,580" size="82,21" zPosition="3" valign="center" halign="left" font="Regular;18" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <widget render="Label" source="daypercent3""" + str(uur) + """" position=\"""" + str(112 + (144 * uur)) + """,606" size="80,20" zPosition="3" valign="center" halign="left" font="Regular;18" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <widget render="Label" source="hrdayper3""" + str(uur) + """" position=\"""" + str(112 + (144 * uur)) + """ ,632" size="80,20" zPosition="3" valign="center" halign="left" font="Regular;18" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <widget render="Label" source="dayspeed3""" + str(uur) + """" position=\"""" + str(112 + (144 * uur)) + """,658" size="82,21" zPosition="3" valign="center" halign="left" font="Regular;18" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <widget name="sunicon""" + str(uur) + """" position=\"""" + str(76 + (144 * uur)) + """,578" size="24,24" zPosition="3" pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/wind/sunpcsd.png" alphatest="blend"/>
-                    <widget name="rainicon""" + str(uur) + """" position=\"""" + str(77 + (144 * uur)) + """,605" size="20,20" zPosition="3" pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/wind/rainsd.png" alphatest="blend"/>
-                    <widget name="rhicon""" + str(uur) + """" position=\"""" + str(79 + (144 * uur)) + """,632" size="16,20" zPosition="3" pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/wind/rhsd.png" alphatest="blend"/>
-                    <widget name="windicon""" + str(uur) + """" position=\"""" + str(79 + (144 * uur)) + """,656" size="25,25" zPosition="3" pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/wind/turbine.png" alphatest="blend"/>"""
+                    <widget render="Label" source="dayhour3""" + str(uur) + """" position=\"""" + str(146 + (144 * uur)) + """,506" size="42,28" zPosition="3" valign="center" halign="left" font="Regular;22" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget render="Label" source="daytemp3""" + str(uur) + """" position=\"""" + str(80 + (144 * uur)) + """,540" size="120,36" zPosition="3" valign="center" halign="left" font="Regular;32" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget render="Label" source="sunpercent3""" + str(uur) + """" position=\"""" + str(112 + (144 * uur)) + """,580" size="82,21" zPosition="3" valign="center" halign="left" font="Regular;18" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget render="Label" source="daypercent3""" + str(uur) + """" position=\"""" + str(112 + (144 * uur)) + """,606" size="80,20" zPosition="3" valign="center" halign="left" font="Regular;18" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget render="Label" source="hrdayper3""" + str(uur) + """" position=\"""" + str(112 + (144 * uur)) + """ ,632" size="80,20" zPosition="3" valign="center" halign="left" font="Regular;18" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget render="Label" source="dayspeed3""" + str(uur) + """" position=\"""" + str(112 + (144 * uur)) + """,658" size="82,21" zPosition="3" valign="center" halign="left" font="Regular;18" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget name="sunicon""" + str(uur) + """" position=\"""" + str(76 + (144 * uur)) + """,578" size="24,24" zPosition="3" pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/windhd/sunpchd.png" scale="1" alphatest="blend"/>
+                    <widget name="rainicon""" + str(uur) + """" position=\"""" + str(77 + (144 * uur)) + """,605" size="20,20" zPosition="3" pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/windhd/rainhd.png" scale="1" alphatest="blend"/>
+                    <widget name="rhicon""" + str(uur) + """" position=\"""" + str(79 + (144 * uur)) + """,632" size="16,20" zPosition="3" pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/windhd/rhhd.png" scale="1" alphatest="blend"/>
+                    <widget name="windicon""" + str(uur) + """" position=\"""" + str(79 + (144 * uur)) + """,656" size="25,25" zPosition="3" pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/windhd/turbinehd.png" scale="1" alphatest="blend"/>"""
                 self["vlakuur" + str(uur)] = Pixmap()
                 self["sunicon" + str(uur)] = Pixmap()
                 self["rainicon" + str(uur)] = Pixmap()
@@ -593,21 +680,21 @@ class sevendays(Screen):
             skin = """
                     <screen name="sevenday" title="seven" flags="wfNoBorder" position="center,center" size="1280,720">
                     <widget name="bgpic" position="0,0" size="1280,720" zPosition="-1" alphatest="blend"/>
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/background.png" position="center,center" size="1280,720" zPosition="0" alphatest="blend"/>
-                    <widget source="global.CurrentTime" render="Label" position="1091,12" size="150,55" transparent="1" zPosition="1" font="Regular;24" valign="center" halign="right"><convert type="ClockToText">Format:%-H:%M</convert></widget>
-                    <widget source="global.CurrentTime" render="Label" position="941,32" size="300,55" transparent="1" zPosition="1" font="Regular;16" valign="center" halign="right"><convert type="ClockToText">Format:%a %d/%m/%y</convert></widget>
-                    <widget name="yellowdot" position="184,307" size="24,24" pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/buttons/yeldot.png" zPosition="3" alphatest="blend"/>
-                    <widget render="Label" source="city1" position="405,37" size="470,42" zPosition="3" valign="center" halign="center" font="Regular;32" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <widget render="Label" source="bigtemp1" position="565,88" size="235,76" zPosition="3" valign="center" halign="left" font="Regular;72" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <widget render="Label" source="bigweathertype1" position="565,208" size="320,30" zPosition="3" valign="center" halign="left" font="Regular;18" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <widget render="Label" source="GevoelsTemp1" position="565,176" size="236,30" zPosition="3" valign="center" halign="left" font="Regular;18" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <widget render="Label" source="winddir1" position="565,240" size="230,30" zPosition="3" valign="center" halign="left" font="Regular;18" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <widget name="weatheralertbg1"   position="877,162"  size="398,48"  zPosition="2" pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/alert/vlak_alertsd.png" alphatest="on"/>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/backgroundhd.png" position="center,center" size="1280,720" scale="1" zPosition="0" alphatest="blend"/>
+                    <widget source="global.CurrentTime" render="Label" position="1091,12" size="150,55" transparent="1" zPosition="1" font="Regular;24" foregroundColor="#00ffffff" backgroundColor="#00202020" valign="center" halign="right"><convert type="ClockToText">Format:%-H:%M</convert></widget>
+                    <widget source="global.CurrentTime" render="Label" position="941,32" size="300,55" transparent="1" zPosition="1" font="Regular;16" foregroundColor="#00ffffff" backgroundColor="#00202020" valign="center" halign="right"><convert type="ClockToText">Format:%a %d/%m/%y</convert></widget>
+                    <widget name="yellowdot" position="184,307" size="24,24" pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/yeldot.png" zPosition="3" alphatest="blend"/>
+                    <widget render="Label" source="city1" position="405,37" size="470,42" zPosition="3" valign="center" halign="center" font="Regular;32" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget render="Label" source="bigtemp1" position="565,88" size="235,76" zPosition="3" valign="center" halign="left" font="Regular;72" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget render="Label" source="bigweathertype1" position="565,208" size="320,30" zPosition="3" valign="center" halign="left" font="Regular;18" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget render="Label" source="GevoelsTemp1" position="565,176" size="236,30" zPosition="3" valign="center" halign="left" font="Regular;18" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget render="Label" source="winddir1" position="565,240" size="230,30" zPosition="3" valign="center" halign="left" font="Regular;18" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget name="weatheralertbg1"   position="877,162"  size="398,48"  zPosition="2" pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/alert/vlak_alertsd.png" alphatest="on"/>
                     <widget name="weatheralerticon1" position="883,165"  size="42,42"   zPosition="4" alphatest="blend" transparent="1"/>
-                    <widget name="weatheralert1"     position="955,165"  size="340,42"  zPosition="3" valign="center" halign="left" font="Regular;32" transparent="1" foregroundColor="#00ffffff" shadowColor="black" shadowOffset="-2,-2"/>""" + peocpicsd + dayinfoblok + """
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/buttons/bluebuttonsd.png" position="1070,29" size="60,36" zPosition="3" alphatest="blend"/>
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/buttons/menubuttonsd.png" position="949,29" size="60,36" zPosition="3" alphatest="blend"/>
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/buttons/okbuttonsd.png" position="1021,29" size="36,36" zPosition="3" alphatest="blend"/>
+                    <widget name="weatheralert1" position="955,165"  size="340,42"  zPosition="3" valign="center" halign="left" font="Regular;32" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>""" + peocpicsd + dayinfoblok + """
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/buttonsdx.png" position="1070,29" size="36,36" zPosition="3" alphatest="blend"/>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/menubuttonsd.png" position="949,29" size="60,36" zPosition="3" alphatest="blend"/>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/okbuttonsd.png" position="1021,29" size="36,36" zPosition="3" alphatest="blend"/>
                     </screen>"""
 
         self["city1"] = StaticText()
@@ -626,7 +713,7 @@ class sevendays(Screen):
             self._picload_conn = safeSignalConnect(self.picload.PictureData, self.bgPictureLoaded)
             self.loadBackground()
         except Exception as e:
-            print("TheWeather: ePicLoad not available, default background:", e)
+            print("TheWeather: ePicLoad niet beschikbaar, standaard achtergrond:", e)
             self.picload = None
         for uur in range(0, 8):
             self["dayhour3" + str(uur)] = StaticText()
@@ -694,7 +781,7 @@ class sevendays(Screen):
 
             self["sunriselab"] = StaticText()
             self["sunriselab"].text = sunrise+" - "+sunset
-            self["myActionMap"] = ActionMap(["SetupActions", "MenuActions", "ColorActions"], {"menu": self.KeyMenu, "left": self.left, "right": self.right, "cancel": self.cancel, "red": self.cancel, "ok": self.fourteendays, "green": self.toggleHourStep, "yellow": self.openBackgroundPicker, "blue": self.openTwoLocations}, -1)
+            self["myActionMap"] = ActionMap(["SetupActions", "MenuActions", "ColorActions"], {"menu": self.KeyMenu, "left": self.left, "right": self.right, "cancel": self.cancel, "red": self.cancel, "ok": self.fourteendays, "green": self.toggleHourStep, "yellow": self.openRadar, "blue": self.openTwoLocations}, -1)
             self.skin = skin
             self.updateFrameselect()
                 
@@ -774,9 +861,9 @@ class sevendays(Screen):
                 print("updateFrameselect: fout bij instellen weeralarm-kleur:", e)
             try:
                 if sz_w > 1800:
-                    iconpad = "/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/" + icoonpath + "/alert/alert_" + alertKleur + ".png"
+                    iconpad = "/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/" + SHARED_PACK + "/alert/alert_" + alertKleur + ".png"
                 else:
-                    iconpad = "/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/" + icoonpath + "/alert/alert_" + alertKleur + "_sd.png"
+                    iconpad = "/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/" + SHARED_PACK + "/alert/alert_" + alertKleur + "_sd.png"
                 if self["weatheralerticon1"].instance is not None:
                     self["weatheralerticon1"].instance.setPixmapFromFile(iconpad)
                     self["weatheralerticon1"].show()
@@ -822,8 +909,8 @@ class sevendays(Screen):
                 self["dayIcon" + str(self.selected) + str(perUurUpdate)].show()
                 self["vlakuur" + str(perUurUpdate)].show()
                 self["sunicon" + str(perUurUpdate)].show()
-                iconfolder = "iconhd" if sz_w > 1800 else "icon"
-                iconpath = "/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/" + icoonpath + "/" + iconfolder + "/" + slotHours[perUurUpdate]["iconcode"] + ".png"
+                iconpath = "/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/" + icoonpath + "/iconhd/" + slotHours[perUurUpdate]["iconcode"] + ".png"
+                                
                 try:
                     self["dayIcon" + str(self.selected) + str(perUurUpdate)].instance.setPixmap(loadPNG(iconpath))
                 except:
@@ -895,9 +982,9 @@ class sevendays(Screen):
             bgfile = backgroundpath
         else:
             if sz_w > 1800:
-                bgfile = "/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/" + icoonpath + "/backgroundhd.png"
+                bgfile = "/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/" + SHARED_PACK + "/backgroundhd.png"
             else:
-                bgfile = "/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/" + icoonpath + "/background.png"
+                bgfile = "/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/" + SHARED_PACK + "/backgroundhd.png"
         try:
             if sz_w > 1800:
                 self.picload.setPara([1920, 1080, 1, 1, False, 1, "#ff000000"])
@@ -918,16 +1005,20 @@ class sevendays(Screen):
         except Exception as e:
             print("bgPictureLoaded: fout:", e)
 
-    #Temporary button for the backgrounds
-    def openBackgroundPicker(self):
-        self.session.openWithCallback(self.backgroundPickerCallback, BackgroundPickerScreen)
-
+    def openRadar(self):
+        global lockaaleStad
+        lat, lon = getCoordsFromEntry(lockaaleStad)
+        if lat is not None and lon is not None:
+            self.session.open(RadarScreen, lat=lat, lon=lon, zoom=7) #map zoom
+        else:
+            self.session.open(MessageBox, _("No radar coordinates for this location.\nRemove and re-add it via search to enable radar."), MessageBox.TYPE_INFO)
+    
     #Temporary button for the twolocations
     def openTwoLocations(self):
         self.session.open(twolocations)
 
     def backgroundPickerCallback(self, changed=None):
-        # Background reload, without restart
+        
         if changed:
             self.loadBackground()
 
@@ -941,6 +1032,8 @@ class sevendays(Screen):
 class fourteen(Screen):
     def __init__(self, session):
         Screen.__init__(self, session)
+        AddNewScreen(self)
+        self.onClose.append(lambda: RemoveScreen(self))
         global weatherData
         if sz_w > 1800:
             dayinfoblok = ""
@@ -1031,37 +1124,36 @@ class fourteen(Screen):
                     linesize = """size="%s,%s\"""" % (lines_size[(str(tempdiff) + ".png")][0], lines_size[(str(tempdiff) + ".png")][1])
                     linesizeb = """size="%s,%s\"""" % (lines_size["b" + (str(tempdiffcold) + ".png")][0], lines_size[(str(tempdiffcold) + ".png")][1])
                     dayinfoblok += """
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/lines/""" + str(tempdiff) + """.png" position=\"""" + str((130 + (118 * day)) + 59) + """,""" + str(yposline) + """\" """+linesize+""" zPosition="10" transparent="0" alphatest="blend"/>
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/lines/b""" + str(tempdiffcold) + """.png" position=\"""" + str((130 + (118 * day)) + 59) + """,""" + str(yposlinecold-maxlowertempmover) + """\" """+linesizeb+""" zPosition="10" transparent="0" alphatest="blend"/>
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/lines/bar.png" position=\"""" + str((130 + (118 * day)) + 120) + """,140" size="10,900" zPosition="10" transparent="0" alphatest="blend"/>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/lines/""" + str(tempdiff) + """.png" position=\"""" + str((130 + (118 * day)) + 59) + """,""" + str(yposline) + """\" """+linesize+""" zPosition="10" transparent="0" alphatest="blend"/>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/lines/b""" + str(tempdiffcold) + """.png" position=\"""" + str((130 + (118 * day)) + 59) + """,""" + str(yposlinecold-maxlowertempmover) + """\" """+linesizeb+""" zPosition="10" transparent="0" alphatest="blend"/>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/lines/bar.png" position=\"""" + str((130 + (118 * day)) + 120) + """,140" size="10,900" zPosition="8" transparent="0" alphatest="blend"/>
                     """
 
                 closedrainbar = int(round(rainamount/3)*3)
                 dayinfoblok += """
-                    <widget render="Label" source="regenval""" + str(day) + """" position=\"""" + str((134 + (118 * day)) + 0) + """,600" size="118,54" valign="center" halign="center" zPosition="20" font="Regular;25" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <widget render="Label" source="windspeed""" + str(day) + """" position=\"""" + str((134 + (118 * day)) + 0) + """,435" size="118,54" valign="center" halign="center" zPosition="20" font="Regular;25" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <widget render="Label" source="regenvalunit""" + str(day) + """" position=\"""" + str((134 + (118 * day)) + 0) + """,600" size="118,54" valign="center" halign="center" zPosition="20" font="Regular;30" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/lines/rain_""" + str(closedrainbar) + """.png" position=\"""" + str((128 + (118 * day)) + 45) + """,""" + str((602) - closedrainbar) + """\" size="60,""" + str(closedrainbar) + """\" zPosition="12" transparent="0" alphatest="blend"/>
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/lines/rainstond.png" position=\"""" + str((110 + (118 * day)) + 45) + """,""" + str((600)) + """\" size="80,10" zPosition="15" transparent="0" alphatest="blend"/>
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/lines/rdot.png" position=\"""" + str(((130 + (118 * day)) + 59)-12) + """,""" + str((((yposline) + lineheight)-12)) + """\" size="25,25" zPosition="10" transparent="0" alphatest="blend"/>
+                    <widget render="Label" source="regenval""" + str(day) + """" position=\"""" + str((134 + (118 * day)) + 0) + """,600" size="118,54" valign="center" halign="center" zPosition="20" font="Regular;25" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget render="Label" source="windspeed""" + str(day) + """" position=\"""" + str((134 + (118 * day)) + 0) + """,435" size="118,54" valign="center" halign="center" zPosition="20" font="Regular;25" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget render="Label" source="regenvalunit""" + str(day) + """" position=\"""" + str((134 + (118 * day)) + 0) + """,600" size="118,54" valign="center" halign="center" zPosition="20" font="Regular;30" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/lines/rain_""" + str(closedrainbar) + """.png" position=\"""" + str((128 + (118 * day)) + 45) + """,""" + str((602) - closedrainbar) + """\" size="60,""" + str(closedrainbar) + """\" zPosition="12" transparent="0" alphatest="blend"/>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/lines/rainstond.png" position=\"""" + str((110 + (118 * day)) + 45) + """,""" + str((600)) + """\" size="80,10" zPosition="15" transparent="0" alphatest="blend"/>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/lines/rdot.png" position=\"""" + str(((130 + (118 * day)) + 59)-12) + """,""" + str((((yposline) + lineheight)-12)) + """\" size="25,25" zPosition="10" transparent="0" alphatest="blend"/>
                     <widget name="bigWeerIcon1""" + str(day) + """" position=\"""" + str((130 + (118 * day)) + 28) + """,267" size="72,72" pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/iconhd/""" + str(dagenbefore["iconcode"]) + """.png" zPosition="1" alphatest="blend"/>
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/lines/bdot.png" position=\"""" + str(((130 + (118 * day)) + 59)-12) + """,""" + str(((yposlinecold) + lineheightcold)-12-maxlowertempmover) + """\" size="25,25" zPosition="10" transparent="0" alphatest="blend"/>
-                    <widget name="wind""" + str(day) + """" position=\"""" + str((130 + (118 * day)) + 40) + """,375" size="56,56" pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/windbig/""" + str(dagenbefore["winddirection"]) + """.png" zPosition="2" transparent="1" alphatest="blend"/>
-                    <widget render="Label" source="dagvandeweek""" + str(day) + """" position=\"""" + str((134 + (118 * day)) + 0) + """,155" size="118,54" valign="center" halign="center" zPosition="15" font="Regular;45" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <widget render="Label" source="datumvandeweek""" + str(day) + """" position=\"""" + str((134 + (118 * day)) + 0) + """,195" size="118,54" valign="center" halign="center" zPosition="15" font="Regular;30" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <widget render="Label" source="linetempmax""" + str(day) + """" position=\"""" + str(((130 + (118 * day))-15) + 59) + """,""" + str(((yposline-45) + lineheight)) + """\" size="90,54" zPosition="15" font="Regular;30" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <widget render="Label" source="linetempmin""" + str(day) + """" position=\"""" + str(((130 + (118 * day))-15) + 59) + """,""" + str((yposlinecold + 15) + lineheightcold-maxlowertempmover) + """\" size="90,54" zPosition="15" font="Regular;30" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/lines/bdot.png" position=\"""" + str(((130 + (118 * day)) + 59)-12) + """,""" + str(((yposlinecold) + lineheightcold)-12-maxlowertempmover) + """\" size="25,25" zPosition="10" transparent="0" alphatest="blend"/>
+                    <widget name="wind""" + str(day) + """" position=\"""" + str((126 + (118 * day)) + 40) + """,370" size="56,56" pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/windhd/""" + str(dagenbefore["winddirection"]) + """.png" zPosition="2" transparent="1" alphatest="blend"/>
+                    <widget render="Label" source="dagvandeweek""" + str(day) + """" position=\"""" + str((134 + (118 * day)) + 0) + """,155" size="118,54" valign="center" halign="center" zPosition="15" font="Regular;45" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget render="Label" source="datumvandeweek""" + str(day) + """" position=\"""" + str((134 + (118 * day)) + 0) + """,195" size="118,54" valign="center" halign="center" zPosition="15" font="Regular;30" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget render="Label" source="linetempmax""" + str(day) + """" position=\"""" + str(((130 + (118 * day))-15) + 59) + """,""" + str(((yposline-45) + lineheight)) + """\" size="90,54" zPosition="15" font="Regular;30" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget render="Label" source="linetempmin""" + str(day) + """" position=\"""" + str(((130 + (118 * day))-15) + 59) + """,""" + str((yposlinecold + 15) + lineheightcold-maxlowertempmover) + """\" size="90,54" zPosition="15" font="Regular;30" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
                     """
             skin = """
-                    <screen name="fourteen" position="center,center" size="1920,1080" title="fourteen">
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/bgbluhd.png" position="center,center" size="1920,1080" zPosition="0" alphatest="blend"/>
-                    <widget source="global.CurrentTime" render="Label" position="1634,35" size="225,45" transparent="1" zPosition="1" font="Regular;36" valign="center" halign="right"><convert type="ClockToText">Format:%-H:%M</convert></widget>
-                    <widget source="global.CurrentTime" render="Label" position="1409,74" size="450,37" transparent="1" zPosition="1" font="Regular;24" valign="center" halign="right"><convert type="ClockToText">Format:%a %d/%m/%y</convert></widget>
-                    <widget render="Label" source="city1" position="608,44" size="705,64" zPosition="3" valign="center" halign="center" font="Regular;48" transparent="1" />
+                    <screen name="fourteen" flags="wfNoBorder" position="center,center" size="1920,1080" title="fourteen">
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/bgbluhd.png" position="center,center" size="1920,1080" zPosition="0" alphatest="blend"/>
+                    <widget source="global.CurrentTime" render="Label" position="1634,35" size="225,45" transparent="1" zPosition="1" font="Regular;36" foregroundColor="#00ffffff" backgroundColor="#00202020" valign="center" halign="right"><convert type="ClockToText">Format:%-H:%M</convert></widget>
+                    <widget source="global.CurrentTime" render="Label" position="1409,74" size="450,37" transparent="1" zPosition="1" font="Regular;24" foregroundColor="#00ffffff" backgroundColor="#00202020" valign="center" halign="right"><convert type="ClockToText">Format:%a %d/%m/%y</convert></widget>
+                    <widget render="Label" source="city1" position="608,44" size="705,64" zPosition="3" valign="center" halign="center" font="Regular;48" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" />
                     """ + dayinfoblok + """
                     </screen>"""
 
-            # for day in range(0, 14):
             for day in range(0, len(dataDagen)):
                 dagenbefore = dataDagen[day]
                 tempdiff = 0
@@ -1200,36 +1292,35 @@ class fourteen(Screen):
                     linesize = """size="%s,%s\"""" % (lines_size[(str(tempdiff) + ".png")][0], lines_size[(str(tempdiff) + ".png")][1])
                     linesizeb = """size="%s,%s\"""" % (lines_size["b" + (str(tempdiffcold) + ".png")][0], lines_size[(str(tempdiffcold) + ".png")][1])
                     dayinfoblok += """
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/linessd/""" + str(tempdiff) + """.png" position=\"""" + str((86 + (79 * day)) + 39) + """,""" + str(yposline) + """\" """+linesize+""" zPosition="10" transparent="1" alphatest="blend"/>
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/linessd/b""" + str(tempdiffcold) + """.png" position=\"""" + str((86 + (79 * day)) + 39) + """,""" + str(yposlinecold-maxlowertempmover) + """\" """+linesizeb+""" zPosition="10" transparent="1" alphatest="blend"/>
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/linessd/bar.png" position=\"""" + str((86 + (79 * day)) + 80) + """,93" size="3,590" zPosition="10" transparent="0" alphatest="blend"/>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/linessd/""" + str(tempdiff) + """.png" position=\"""" + str((86 + (79 * day)) + 39) + """,""" + str(yposline) + """\" """+linesize+""" zPosition="10" transparent="1" alphatest="blend"/>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/linessd/b""" + str(tempdiffcold) + """.png" position=\"""" + str((86 + (79 * day)) + 39) + """,""" + str(yposlinecold-maxlowertempmover) + """\" """+linesizeb+""" zPosition="10" transparent="1" alphatest="blend"/>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/linessd/bar.png" position=\"""" + str((86 + (79 * day)) + 80) + """,93" size="3,590" zPosition="8" transparent="0" alphatest="blend"/>
                     """
 
                 closedrainbar = int(round(rainamount/3)*3)
                 dayinfoblok += """
-                    <widget render="Label" source="regenval""" + str(day) + """" position=\"""" + str((87 + (79 * day)) + 0) + """,400" size="79,36" valign="center" halign="center" zPosition="20" font="Regular;17" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <widget render="Label" source="windspeed""" + str(day) + """" position=\"""" + str((87 + (79 * day)) + 0) + """,278" size="79,48" valign="center" halign="center" zPosition="20" font="Regular;16" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <widget render="Label" source="regenvalunit""" + str(day) + """" position=\"""" + str((87 + (79 * day)) + 0) + """,400" size="79,36" valign="center" halign="center" zPosition="20" font="Regular;20" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/linessd/rain_""" + str(closedrainbar) + """.png" position=\"""" + str((80 + (79 * day)) + 30) + """,""" + str((405) - closedrainbar) + """\" size="40,""" + str(closedrainbar) + """\" zPosition="12" transparent="0" alphatest="blend"/>
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/linessd/rainstond.png" position=\"""" + str((64 + (79 * day)) + 30) + """,""" + str((400)) + """\" size="67,7" zPosition="15" transparent="0" alphatest="blend"/>
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/linessd/rdot.png" position=\"""" + str(((87 + (79 * day)) + 39)-8) + """,""" + str((((yposline) + lineheight)-8)) + """\" size="18,18" zPosition="10" transparent="0" alphatest="blend"/>
-                    <widget name="bigWeerIcon1""" + str(day) + """" position=\"""" + str((87 + (79 * day)) + 19) + """,178" size="48,48" pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/icon/""" + str(dagenbefore["iconcode"]) + """.png" zPosition="1" alphatest="blend"/>
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/linessd/bdot.png" position=\"""" + str(((87 + (79 * day)) + 39)-8) + """,""" + str(((yposlinecold) + lineheightcold)-8-maxlowertempmover) + """\" size="18,18" zPosition="10" transparent="0" alphatest="blend"/>
-                    <widget name="wind""" + str(day) + """" position=\"""" + str((80 + (79 * day)) + 27) + """,250" size="42,42" pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/windhd/""" + str(dagenbefore["winddirection"]) + """.png" zPosition="2" transparent="1" alphatest="blend"/>
-                    <widget render="Label" source="dagvandeweek""" + str(day) + """" position=\"""" + str((87 + (79 * day)) + 0) + """,103" size="79,36" valign="center" halign="center" zPosition="15" font="Regular;30" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <widget render="Label" source="datumvandeweek""" + str(day) + """" position=\"""" + str((87 + (79 * day)) + 0) + """,130" size="79,36" valign="center" halign="center" zPosition="15" font="Regular;20" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <widget render="Label" source="linetempmax""" + str(day) + """" position=\"""" + str(((103 + (79 * day))-10) + 26) + """,""" + str(((yposline-35) + lineheight)) + """\" size="60,36" zPosition="15" font="Regular;20" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <widget render="Label" source="linetempmin""" + str(day) + """" position=\"""" + str(((106 + (79 * day))-10) + 26) + """,""" + str((yposlinecold + 10) + lineheightcold-maxlowertempmover) + """\" size="60,36" zPosition="15" font="Regular;20" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget render="Label" source="regenval""" + str(day) + """" position=\"""" + str((87 + (79 * day)) + 0) + """,400" size="79,36" valign="center" halign="center" zPosition="20" font="Regular;17" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget render="Label" source="windspeed""" + str(day) + """" position=\"""" + str((87 + (79 * day)) + 0) + """,278" size="79,48" valign="center" halign="center" zPosition="20" font="Regular;16" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget render="Label" source="regenvalunit""" + str(day) + """" position=\"""" + str((87 + (79 * day)) + 0) + """,400" size="79,36" valign="center" halign="center" zPosition="20" font="Regular;20" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/linessd/rain_""" + str(closedrainbar) + """.png" position=\"""" + str((80 + (79 * day)) + 30) + """,""" + str((405) - closedrainbar) + """\" size="40,""" + str(closedrainbar) + """\" zPosition="12" transparent="0" alphatest="blend"/>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/linessd/rainstond.png" position=\"""" + str((64 + (79 * day)) + 30) + """,""" + str((400)) + """\" size="67,7" zPosition="15" transparent="0" alphatest="blend"/>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/linessd/rdot.png" position=\"""" + str(((87 + (79 * day)) + 39)-8) + """,""" + str((((yposline) + lineheight)-8)) + """\" size="18,18" zPosition="10" transparent="0" alphatest="blend"/>
+                    <widget name="bigWeerIcon1""" + str(day) + """" position=\"""" + str((87 + (79 * day)) + 19) + """,178" size="48,48" scale="1" pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/iconhd/""" + str(dagenbefore["iconcode"]) + """.png" zPosition="1" alphatest="blend"/>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/linessd/bdot.png" position=\"""" + str(((87 + (79 * day)) + 39)-8) + """,""" + str(((yposlinecold) + lineheightcold)-8-maxlowertempmover) + """\" size="18,18" zPosition="10" transparent="0" alphatest="blend"/>
+                    <widget name="wind""" + str(day) + """" position=\"""" + str((87 + (79 * day)) + 27) + """,240" size="28,28" scale="1" pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/windhd/""" + str(dagenbefore["winddirection"]) + """.png" zPosition="2" alphatest="blend"/>
+                    <widget render="Label" source="dagvandeweek""" + str(day) + """" position=\"""" + str((87 + (79 * day)) + 0) + """,103" size="79,36" valign="center" halign="center" zPosition="15" font="Regular;30" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget render="Label" source="datumvandeweek""" + str(day) + """" position=\"""" + str((87 + (79 * day)) + 0) + """,130" size="79,36" valign="center" halign="center" zPosition="15" font="Regular;20" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget render="Label" source="linetempmax""" + str(day) + """" position=\"""" + str(((103 + (79 * day))-10) + 26) + """,""" + str(((yposline-35) + lineheight)) + """\" size="60,36" zPosition="15" font="Regular;20" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget render="Label" source="linetempmin""" + str(day) + """" position=\"""" + str(((106 + (79 * day))-10) + 26) + """,""" + str((yposlinecold + 10) + lineheightcold-maxlowertempmover) + """\" size="60,36" zPosition="15" font="Regular;20" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
                     """
             skin = """
-                    <screen name="fourteen" position="center,center" size="1280,720" title="fourteen">
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/bgblusd.png" position="center,center" size="1280,720" zPosition="0" alphatest="blend"/>
-                    <widget source="global.CurrentTime" render="Label" position="1091,12" size="150,55" transparent="1" zPosition="1" font="Regular;24" valign="center" halign="right"><convert type="ClockToText">Format:%-H:%M</convert></widget>
-                    <widget source="global.CurrentTime" render="Label" position="941,32" size="300,55" transparent="1" zPosition="1" font="Regular;16" valign="center" halign="right"><convert type="ClockToText">Format:%a %d/%m/%y</convert></widget>
-                    <widget render="Label" source="city1" position="406,30" size="470,43" zPosition="3" valign="center" halign="center" font="Regular;32" transparent="1" />
+                    <screen name="fourteen" flags="wfNoBorder" position="center,center" size="1280,720" title="fourteen">
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/bgbluhd.png" position="center,center" size="1280,720" scale="1" zPosition="0" alphatest="blend"/>
+                    <widget source="global.CurrentTime" render="Label" position="1091,12" size="150,55" transparent="1" zPosition="1" font="Regular;24" foregroundColor="#00ffffff" backgroundColor="#00202020" valign="center" halign="right"><convert type="ClockToText">Format:%-H:%M</convert></widget>
+                    <widget source="global.CurrentTime" render="Label" position="941,32" size="300,55" transparent="1" zPosition="1" font="Regular;16" foregroundColor="#00ffffff" backgroundColor="#00202020" valign="center" halign="right"><convert type="ClockToText">Format:%a %d/%m/%y</convert></widget>
+                    <widget render="Label" source="city1" position="406,30" size="470,43" zPosition="3" valign="center" halign="center" font="Regular;32" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" />
                     """ + dayinfoblok + """
                     </screen>"""
-            # for day in range(0, 14):
             for day in range(0, len(dataDagen)):
                 dagenbefore = dataDagen[day]
                 tempdiff = 0
@@ -1288,52 +1379,135 @@ class fourteen(Screen):
     def cancel(self):
         self.close()
 
+class CitySearchKeyBoard(VirtualKeyBoard):
+    def __init__(self, session, title=_("Enter cityname e.g. london"), text=""):
+        VirtualKeyBoard.__init__(self, session, title=title, text=text)
+        self.skinName = ["CitySearchKeyBoard"]
+        for wname in ("prompt", "locale", "key_red", "key_green", "key_yellow", "key_blue"):
+            try:
+                self[wname]
+            except KeyError:
+                self[wname] = Label("")
+
+        if sz_w > 1800:
+            self.skin = """
+                <screen name="CitySearchKeyBoard" position="center,center" size="1200,750" flags="wfNoBorder" title="Virtual keyboard">
+                <widget name="prompt" position="15,10" size="1170,30" font="Regular;24" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1"/>
+                <widget name="text" position="15,45" size="1170,50" font="Regular;34" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1"/>
+                <widget name="list" position="15,105" size="1170,420" transparent="1"/>
+                <widget name="locale" position="15,535" size="900,25" font="Regular;18" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1"/>
+                <widget name="suggestions" position="15,565" size="1170,180" font="Regular;28" foregroundColor="#00ffffff" backgroundColor="#00202020"/>
+                <widget name="key_red" position="15,750" size="200,30" font="Regular;20" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1"/>
+                <widget name="key_green" position="230,750" size="200,30" font="Regular;20" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1"/>
+                <widget name="key_yellow" position="445,750" size="200,30" font="Regular;20" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1"/>
+                <widget name="key_blue" position="660,750" size="200,30" font="Regular;20" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1"/>
+                </screen>"""
+        else:
+            self.skin = """
+                <screen name="CitySearchKeyBoard" position="center,center" size="800,500" flags="wfNoBorder" title="Virtual keyboard">
+                <widget name="prompt" position="10,7" size="780,20" font="Regular;16" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1"/>
+                <widget name="text" position="10,30" size="780,33" font="Regular;22" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1"/>
+                <widget name="list" position="10,70" size="780,280" transparent="1"/>
+                <widget name="locale" position="10,357" size="600,17" font="Regular;12" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1"/>
+                <widget name="suggestions" position="10,377" size="780,120" font="Regular;18" foregroundColor="#00ffffff" backgroundColor="#00202020"/>
+                <widget name="key_red" position="10,500" size="133,20" font="Regular;14" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1"/>
+                <widget name="key_green" position="153,500" size="133,20" font="Regular;14" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1"/>
+                <widget name="key_yellow" position="297,500" size="133,20" font="Regular;14" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1"/>
+                <widget name="key_blue" position="440,500" size="133,20" font="Regular;14" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1"/>
+                </screen>"""
+
+        self["suggestions"] = Label("")
+        self.lastCheckedText = text
+        self.searchResults = []
+
+        self.suggestTimer = eTimer()
+        self._suggestTimerConn = safeTimerCallback(self.suggestTimer, self.checkTextChanged)
+        self.suggestTimer.start(400, False)
+
+    def processSelect(self):
+        VirtualKeyBoard.processSelect(self)
+
+    def checkTextChanged(self):
+        current = self["text"].getText()
+        if current != self.lastCheckedText:
+            self.lastCheckedText = current
+            if len(current) >= 3:
+                self.updateSuggestions(current)
+            else:
+                self["suggestions"].setText("")
+                self.searchResults = []
+
+    def close(self, *args):
+        self.suggestTimer.stop()
+        VirtualKeyBoard.close(self, *args)
+
+    def updateSuggestions(self, searchterm):
+        try:
+            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36'}
+            cookie_jar = cookielib.CookieJar()
+            opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cookie_jar))
+            urllib2.install_opener(opener)
+            req = urllib2.Request("https://location.buienradar.nl/1.1/location/search?query=" + searchterm.replace(" ", "%20"), data=None, headers=headers)
+            handler = urllib2.urlopen(req, timeout=8)
+            antw = handler.read()
+            self.searchResults = json.loads(antw)
+        except Exception as e:
+            print("[TheWeather] updateSuggestions fout:", e)
+            self.searchResults = []
+        print("[TheWeather] DEBUG eerste zoekresultaat:", self.searchResults[0] if self.searchResults else "leeg")
+        names = [r.get("name", "") + " (" + r.get("countrycode", "") + ")" for r in self.searchResults[:6]]
+        text = "\n".join(names)
+        if not PY3 and isinstance(text, unicode):
+            text = text.encode("utf-8")
+        self["suggestions"].setText(text)
 
 class localcityscreen(Screen):
-
     def __init__(self, session):
         if sz_w > 1800:
             skin = """
-                    <screen name="startScreen" position="center,center" size="1920,1080" title="Weather Plugin">
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/borders/smallline3.png" position="0,112" size="1920,3" zPosition="1"/>
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/borders/smallline3.png" position="0,1010" size="1920,3" zPosition="1"/>
-                    <widget source="global.CurrentTime" render="Label" position="1634,35" size="225,45" transparent="1" zPosition="3" font="Regular;36" valign="center" halign="right"><convert type="ClockToText">Format:%-H:%M</convert></widget>
-                    <widget source="global.CurrentTime" render="Label" position="1409,74" size="450,37" transparent="1" zPosition="3" font="Regular;24" valign="center" halign="right"><convert type="ClockToText">Format:%a %d/%m/%y</convert></widget>
+                    <screen name="startScreen" flags="wfNoBorder" position="center,center" size="1920,1080">
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/borders/smallline3.png" position="0,112" size="1920,3" zPosition="1"/>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/borders/smallline3.png" position="0,1010" size="1920,3" zPosition="1"/>
+                    <widget source="global.CurrentTime" render="Label" position="1634,35" size="225,45" transparent="1" zPosition="3" font="Regular;36" foregroundColor="#00ffffff" backgroundColor="#00202020" valign="center" halign="right"><convert type="ClockToText">Format:%-H:%M</convert></widget>
+                    <widget source="global.CurrentTime" render="Label" position="1409,74" size="450,37" transparent="1" zPosition="3" font="Regular;24" foregroundColor="#00ffffff" backgroundColor="#00202020" valign="center" halign="right"><convert type="ClockToText">Format:%a %d/%m/%y</convert></widget>
                     <widget source="session.VideoPicture" render="Pig" position="30,160" size="720,405" backgroundColor="#ff000000" zPosition="1"/>
-                    <widget source="session.CurrentService" render="Label" position="30,125" size="720,36" zPosition="1" foregroundColor="white" transparent="1" font="Regular;28" noWrap="1" valign="center" halign="center"><convert type="ServiceName">Name</convert></widget>
-                    <widget name="list" position="840,225" size="1000,630" scrollbarMode="showOnDemand" selectionPixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/list/list97563.png"/>\n
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/buttons/red34.png" position="192,1022" size="34,34" alphatest="blend"/>
-                    <widget name="key_red" position="242,1015" size="370,48" zPosition="1" font="Regular;40" halign="left" backgroundColor="#000000" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/buttons/green34.png" position="628,1022" size="34,34" alphatest="blend"/>
-                    <widget name="key_green" position="678,1015" size="370,48" zPosition="1" font="Regular;40" halign="left" backgroundColor="#000000" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/buttons/yellow34.png" position="1064,1022" size="34,34" alphatest="blend"/>
-                    <widget name="key_yellow" position="1114,1015" size="370,48" zPosition="1" font="Regular;40" halign="left" backgroundColor="#000000" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/buttons/blue34.png" position="1500,1022" size="34,34" alphatest="blend"/>
-                    <widget name="key_blue" position="1550,1015" size="370,48" zPosition="1" font="Regular;40" halign="left" backgroundColor="#000000" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <widget name="favor" position="85,45" size="1085,55" valign="center" halign="left" zPosition="1" font="Regular;36" backgroundColor="#000000" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <widget name="plaatsn" position="840,135" size="375,70" valign="center" halign="left" zPosition="1" font="Regular;63" backgroundColor="#000000" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget source="session.CurrentService" render="Label" position="30,125" size="720,36" zPosition="1" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" font="Regular;28" noWrap="1" valign="center" halign="center"><convert type="ServiceName">Name</convert></widget>
+                    <widget name="list" position="840,225" size="975,630" scrollbarMode="showOnDemand" selectionPixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/list/list97563.png"/>\n
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/red34.png" position="192,1022" size="34,34" alphatest="blend"/>
+                    <widget name="key_red" position="242,1015" size="370,48" zPosition="1" font="Regular;40" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/green34.png" position="628,1022" size="34,34" alphatest="blend"/>
+                    <widget name="key_green" position="678,1015" size="370,48" zPosition="1" font="Regular;40" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/yellow34.png" position="1064,1022" size="34,34" alphatest="blend"/>
+                    <widget name="key_yellow" position="1114,1015" size="370,48" zPosition="1" font="Regular;40" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/blue34.png" position="1500,1022" size="34,34" alphatest="blend"/>
+                    <widget name="key_blue" position="1550,1015" size="370,48" zPosition="1" font="Regular;40" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget name="" position="85,45" size="1085,55" valign="center" halign="left" zPosition="1" font="Regular;36" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget name="favor" position="85,45" size="1085,55" valign="center" halign="left" zPosition="1" font="Regular;36" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget name="helpinfo" position="150,722" size="500,600" valign="top" halign="left" zPosition="1" font="Regular;36" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget name="plaatsn" position="840,135" size="375,70" valign="center" halign="left" zPosition="1" font="Regular;63" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
                     </screen>"""
 
         else:
             skin = """
-                    <screen name="startScreen" position="center,center" size="1280,720" title="Weather Plugin">
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/borders/smallline2.png" position="0,88" size="1280,2" zPosition="1"/>
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/borders/smallline2.png" position="0,650" size="1280,2" zPosition="1"/>
-                    <widget source="global.CurrentTime" render="Label" position="1091,12" size="150,55" transparent="1" zPosition="1" font="Regular;24" valign="center" halign="right"><convert type="ClockToText">Format:%-H:%M</convert></widget>
-                    <widget source="global.CurrentTime" render="Label" position="941,32" size="300,55" transparent="1" zPosition="1" font="Regular;16" valign="center" halign="right"><convert type="ClockToText">Format:%a %d/%m/%y</convert></widget>
+                    <screen name="startScreen" flags="wfNoBorder" position="center,center" size="1280,720">
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/borders/smallline2.png" position="0,88" size="1280,2" zPosition="1"/>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/borders/smallline2.png" position="0,630" size="1280,2" zPosition="1"/>
+                    <widget source="global.CurrentTime" render="Label" position="1091,12" size="150,55" transparent="1" zPosition="1" font="Regular;24" foregroundColor="#00ffffff" backgroundColor="#00202020" valign="center" halign="right"><convert type="ClockToText">Format:%-H:%M</convert></widget>
+                    <widget source="global.CurrentTime" render="Label" position="941,32" size="300,55" transparent="1" zPosition="1" font="Regular;16" foregroundColor="#00ffffff" backgroundColor="#00202020" valign="center" halign="right"><convert type="ClockToText">Format:%a %d/%m/%y</convert></widget>
                     <widget source="session.VideoPicture" render="Pig" position="85,120" size="417,243" backgroundColor="#ff000000" zPosition="1"/>
-                    <widget source="session.CurrentService" render="Label" position="85,93" size="417,32" zPosition="1" foregroundColor="white" transparent="1" font="Regular;28" noWrap="1" valign="center" halign="center"><convert type="ServiceName">Name</convert></widget>
-                    <widget name="list" position="630,156" size="600,420" scrollbarMode="showOnDemand" selectionPixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/list/list65043.png"/>\n
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/buttons/red26.png" position="145,663" size="26,26" alphatest="blend"/>
-                    <widget name="key_red" position="185,663" size="220,32" zPosition="1" font="Regular;24" halign="left" backgroundColor="#000000" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/buttons/green26.png" position="420,663" size="26,26" alphatest="blend"/>
-                    <widget name="key_green" position="460,663" size="220,32" zPosition="1" font="Regular;24" halign="left" backgroundColor="#000000" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/buttons/yellow26.png" position="695,663" size="26,26" alphatest="blend"/>
-                    <widget name="key_yellow" position="735,663" size="220,32" zPosition="1" font="Regular;24" halign="left" backgroundColor="#000000" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/buttons/blue26.png" position="970,663" size="26,26" alphatest="blend"/>
-                    <widget name="key_blue" position="1010,663" size="220,32" zPosition="1" font="Regular;24" halign="left" backgroundColor="#000000" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <widget name="favor" position="57,30" size="723,37" valign="center" halign="left" zPosition="1" font="Regular;24" backgroundColor="#000000" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <widget name="plaatsn" position="630,90" size="250,47" valign="center" halign="left" zPosition="1" font="Regular;42" backgroundColor="#000000" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget source="session.CurrentService" render="Label" position="85,93" size="417,32" zPosition="1" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" font="Regular;28" noWrap="1" valign="center" halign="center"><convert type="ServiceName">Name</convert></widget>
+                    <widget name="list" position="630,156" size="650,420" scrollbarMode="showOnDemand" selectionPixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/list/list65043.png"/>\n
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/red26.png" position="145,663" size="26,26" alphatest="blend"/>
+                    <widget name="key_red" position="185,663" size="220,32" zPosition="1" font="Regular;24" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/green26.png" position="420,663" size="26,26" alphatest="blend"/>
+                    <widget name="key_green" position="460,663" size="220,32" zPosition="1" font="Regular;24" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/yellow26.png" position="695,663" size="26,26" alphatest="blend"/>
+                    <widget name="key_yellow" position="735,663" size="220,32" zPosition="1" font="Regular;24" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/blue26.png" position="970,663" size="26,26" alphatest="blend"/>
+                    <widget name="key_blue" position="1010,663" size="220,32" zPosition="1" font="Regular;24" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget name="favor" position="57,30" size="723,37" valign="center" halign="left" zPosition="1" font="Regular;24" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget name="helpinfo" position="100,481" size="335,320" valign="top" halign="left" zPosition="1" font="Regular;20" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget name="plaatsn" position="630,90" size="250,47" valign="center" halign="left" zPosition="1" font="Regular;42" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
                     </screen>"""
 
         self.session = session
@@ -1341,16 +1515,20 @@ class localcityscreen(Screen):
         self.skin = skin
         AddNewScreen(self)
         self.onClose.append(lambda: RemoveScreen(self))
-        self["key_red"] = Label(_("Exit"))
+        self["key_red"] = Label("Exit")
         self["key_green"] = Label(_("Location +"))
         self["key_yellow"] = Label(_("Location -"))
         self["key_blue"] = Label(_("Settings"))
         self["favor"] = Label(_("Favorite Locations"))
+        self.helpInfoDefault = _("Select city and:\n-Press Ok for Weather info\n-Press Menu for RainRadar")
+        self["helpinfo"] = Label(self.helpInfoDefault)
         self["plaatsn"] = Label(_("Location:"))
+        self.radarLoadTimer = eTimer()
+        self._radarLoadTimerConn = safeTimerCallback(self.radarLoadTimer, self._openRadarDeferred)
         self.res = []
         global SavedLokaleWeer
         for x in SavedLokaleWeer:
-            cleanmadecity = str(x).split("-")[0]
+            cleanmadecity = stripCoords(x).rsplit("-", 1)[0]
             if sz_w > 1800:
                 self.res.append([x, MultiContentEntryText(pos=(0, 0), size=(960, 63), font=0, flags=RT_HALIGN_LEFT, text=cleanmadecity, color_sel=0x00D2D226)])
             else:
@@ -1364,7 +1542,7 @@ class localcityscreen(Screen):
             self["list"].l.setItemHeight(42)
             self['list'].l.setFont(0, gFont("Regular", 33))
         self["list"].show()
-        self["actions"] = ActionMap(["WizardActions", "MenuActions", "ShortcutActions"], {"ok": self.go, "back": self.cancel}, -1)
+        self["actions"] = ActionMap(["WizardActions", "MenuActions", "ShortcutActions"], {"ok": self.go, "back": self.cancel, "menu": self.openRadarForSelected}, -1)
         self["ColorActions"] = HelpableActionMap(self, "ColorActions", {"red": self.exit, "yellow": self.removeLoc, "green": self.addLoc, "blue": self.addcityinf}, -1)
 
     def go(self):
@@ -1383,12 +1561,27 @@ class localcityscreen(Screen):
             except:
                 self.session.open(MessageBox, _("Download error: No response try again"), MessageBox.TYPE_INFO)
 
+    def openRadarForSelected(self):
+        if len(SavedLokaleWeer) > 0:
+            index = self["list"].getSelectedIndex()
+            selecteddat = self.res[index][0]
+            lat, lon = getCoordsFromEntry(selecteddat)
+            if lat is not None and lon is not None:
+                self.pendingRadarCoords = (lat, lon)
+                self["helpinfo"].setText(_("Loading radar..."))
+                self.radarLoadTimer.start(50, True)
+            else:
+                self.session.open(MessageBox, _("No radar coordinates for this location.\nRemove and re-add it to enable radar."), MessageBox.TYPE_INFO)
+
+    def _openRadarDeferred(self):
+        lat, lon = self.pendingRadarCoords
+        self.session.openWithCallback(self._radarClosed, RadarScreen, lat=lat, lon=lon, zoom=7)
+
+    def _radarClosed(self, *args):
+        self["helpinfo"].setText(self.helpInfoDefault)
+
     def addLoc(self):
-        try:
-            self.session.openWithCallback(self.searchCity, VirtualKeyBoard, title=_("Enter cityname e.g. london or london_gb or london-2643743"), text="")
-        except:
-            None
-            self.session.openWithCallback(self.searchCity, VirtualKeyBoard, title=_("Enter cityname e.g. london or london_gb or london-2643743"), text="")
+        self.session.openWithCallback(self.onCityTyped, CitySearchKeyBoard, title=_("Enter cityname e.g. london"), text="")
 
     def removeLoc(self):
         if len(SavedLokaleWeer) > 0:
@@ -1396,22 +1589,46 @@ class localcityscreen(Screen):
             SavedLokaleWeer.remove(SavedLokaleWeer[index])
             file = open(CFG_DIR + "/TheWeather.cfg", "w")
             for x in SavedLokaleWeer:
-                file.write(str(x) + "\n")
+                file.write(safeStr(x) + "\n")
             file.close()
             self.close()
             self.close()
+    
+    def onCityTyped(self, searchterm=None):
+        if not searchterm:
+            return
+        try:
+            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36'}
+            cookie_jar = cookielib.CookieJar()
+            opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cookie_jar))
+            urllib2.install_opener(opener)
+            req = urllib2.Request("https://location.buienradar.nl/1.1/location/search?query=" + searchterm.replace(" ", "%20"), data=None, headers=headers)
+            handler = urllib2.urlopen(req, timeout=15)
+            antw = handler.read()
+            results = json.loads(antw)
+        except Exception as e:
+            print("[TheWeather] onCityTyped fout:", e)
+            results = []
+        if not results:
+            self.session.open(MessageBox, _("No matching cities found."), MessageBox.TYPE_INFO)
+            return
+        self.session.openWithCallback(self.onCityChosen, CitySuggestListScreen, results)
 
-    def searchCity(self, searchterm=None):
-        if searchterm is not None:
-            searchterm = "" + searchterm.title()
-            SavedLokaleWeer.append(str(searchterm))
-            file = open(CFG_DIR + "/TheWeather.cfg", "w")
-            for x in SavedLokaleWeer:
-                file.write((str(x) + "\n"))
-            file.close()
-            self.close()
-            self.close()
-
+    def onCityChosen(self, chosen=None):
+        if chosen is None:
+            return
+    
+        loc = chosen.get("location") or {}
+        entry = "%s-%s|%s|%s" % (chosen["name"], chosen["id"], loc.get("lat", ""), loc.get("lon", ""))
+        global SavedLokaleWeer
+        SavedLokaleWeer.append(entry)
+        file = open(CFG_DIR + "/TheWeather.cfg", "w")
+        for x in SavedLokaleWeer:
+            file.write(safeStr(x) + "\n")
+        file.close()
+        self.close()
+        self.close()
+    
     def addcityinf(self):
         self.session.open(infoscreen)
 
@@ -1421,69 +1638,178 @@ class localcityscreen(Screen):
     def cancel(self):
         self.close(localcityscreen)
 
+class CitySuggestListScreen(Screen):
+    def __init__(self, session, results):
+        Screen.__init__(self, session)
+        AddNewScreen(self)
+        self.onClose.append(lambda: RemoveScreen(self))
+        self._results = results
+
+        if sz_w > 1800:
+            skin = """
+                <screen name="CitySuggestListScreen" flags="wfNoBorder" position="center,center" size="1920,1080">
+                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/borders/smallline3.png" position="0,112" size="1920,3" zPosition="1"/>
+                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/borders/smallline3.png" position="0,1010" size="1920,3" zPosition="1"/>
+                <widget source="session.VideoPicture" render="Pig" position="30,160" size="720,405" backgroundColor="#ff000000" zPosition="1"/>
+                <widget source="session.CurrentService" render="Label" position="30,125" size="720,36" zPosition="1" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" font="Regular;28" noWrap="1" valign="center" halign="center"><convert type="ServiceName">Name</convert></widget>
+                <widget source="global.CurrentTime" render="Label" position="1634,35" size="225,45" transparent="1" zPosition="3" font="Regular;36" foregroundColor="#00ffffff" backgroundColor="#00202020" valign="center" halign="right"><convert type="ClockToText">Format:%-H:%M</convert></widget>
+                <widget source="global.CurrentTime" render="Label" position="1409,74" size="450,37" transparent="1" zPosition="3" font="Regular;24" foregroundColor="#00ffffff" backgroundColor="#00202020" valign="center" halign="right"><convert type="ClockToText">Format:%a %d/%m/%y</convert></widget>
+                <widget name="list" position="840,225" size="975,630" scrollbarMode="showOnDemand" selectionPixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/list/list97563.png"/>\n
+                <widget name="title" position="840,135" size="1000,70" valign="center" halign="left" zPosition="1" font="Regular;44" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/red34.png" position="192,1022" size="34,34" alphatest="blend"/>
+                <widget name="key_red" position="242,1015" size="370,48" zPosition="1" font="Regular;40" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                </screen>"""
+        else:
+            skin = """
+                <screen name="CitySuggestListScreen" flags="wfNoBorder" position="center,center" size="1280,720">
+                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/borders/smallline2.png" position="0,88" size="1280,2" zPosition="1"/>
+                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/borders/smallline2.png" position="0,630" size="1280,2" zPosition="1"/>
+                <widget source="session.VideoPicture" render="Pig" position="85,120" size="417,243" backgroundColor="#ff000000" zPosition="1"/>
+                <widget source="session.CurrentService" render="Label" position="85,93" size="417,32" zPosition="1" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" font="Regular;28" noWrap="1" valign="center" halign="center"><convert type="ServiceName">Name</convert></widget>
+                <widget source="global.CurrentTime" render="Label" position="1091,12" size="150,55" transparent="1" zPosition="1" font="Regular;24" foregroundColor="#00ffffff" backgroundColor="#00202020" valign="center" halign="right"><convert type="ClockToText">Format:%-H:%M</convert></widget>
+                <widget source="global.CurrentTime" render="Label" position="941,32" size="300,55" transparent="1" zPosition="1" font="Regular;16" foregroundColor="#00ffffff" backgroundColor="#00202020" valign="center" halign="right"><convert type="ClockToText">Format:%a %d/%m/%y</convert></widget>
+                <widget name="list" position="560,156" size="650,420" scrollbarMode="showOnDemand" selectionPixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/list/list65043.png"/>\n
+                <widget name="title" position="557,90" size="620,47" valign="center" halign="left" zPosition="1" font="Regular;36" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/red26.png" position="145,663" size="26,26" alphatest="blend"/>
+                <widget name="key_red" position="185,663" size="220,32" zPosition="1" font="Regular;24" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                </screen>"""
+        self.skin = skin
+
+        self["title"] = Label(_("Choose a match:"))
+        self["key_red"] = Label("Exit")
+
+        self.res = []
+        base_counts = {}
+        for r in results:
+            base = "%s (%s)" % (r.get("name", ""), r.get("countrycode", ""))
+            base_counts[base] = base_counts.get(base, 0) + 1
+
+        seen_counts = {}
+        for r in results:
+            base = "%s (%s)" % (r.get("name", ""), r.get("countrycode", ""))
+            loc = r.get("location", {}) or {}
+            coords = " [%.2f, %.2f]" % (loc.get("lat", 0.0), loc.get("lon", 0.0))
+            if base_counts[base] > 1:
+                foad = r.get("foad", {}) or {}
+                region = foad.get("name")
+                if region:
+                    label = "%s - %s%s" % (base, region, coords)
+                else:
+                    seen_counts[base] = seen_counts.get(base, 0) + 1
+                    label = "%s (%d)%s" % (base, seen_counts[base], coords)
+            else:
+                label = base
+            if not PY3 and isinstance(label, unicode):
+                label = label.encode("utf-8")
+            if sz_w > 1800:
+                self.res.append([r, MultiContentEntryText(pos=(0, 0), size=(960, 63), font=0, flags=RT_HALIGN_LEFT, text=label, color_sel=0x00D2D226)])
+            else:
+                self.res.append([r, MultiContentEntryText(pos=(0, 0), size=(590, 42), font=0, flags=RT_HALIGN_LEFT, text=label, color_sel=0x00D2D226)])
+
+        self["list"] = MenuList(self.res, True, eListboxPythonMultiContent)
+        if sz_w > 1800:
+            self["list"].l.setItemHeight(63)
+            self["list"].l.setFont(0, gFont("Regular", 50))
+        else:
+            self["list"].l.setItemHeight(42)
+            self["list"].l.setFont(0, gFont("Regular", 33))
+        self["list"].show()
+
+        self["actions"] = ActionMap(["WizardActions", "MenuActions", "ShortcutActions"], {"ok": self.selecteer, "back": self.annuleer, "red": self.annuleer}, -1)
+
+    def selecteer(self):
+        idx = self["list"].getSelectedIndex()
+        if 0 <= idx < len(self._results):
+            self.close(self._results[idx])
+        else:
+            self.close(None)
+
+    def annuleer(self):
+        self.close(None)
 
 class infoscreen(Screen):
     def __init__(self, session):
+        global _overlayScreen, _overlayEnabled
         if sz_w > 1800:
             skin = """
-                    <screen name="startScreen" position="center,center" size="1920,1080" title="Weather Plugin">
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/borders/smallline3.png" position="0,112" size="1920,3" zPosition="1"/>
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/borders/smallline3.png" position="0,1010" size="1920,3" zPosition="1"/>
-                    <widget source="global.CurrentTime" render="Label" position="1634,35" size="225,45" transparent="1" zPosition="3" font="Regular;36" valign="center" halign="right"><convert type="ClockToText">Format:%-H:%M</convert></widget>
-                    <widget source="global.CurrentTime" render="Label" position="1409,74" size="450,37" transparent="1" zPosition="3" font="Regular;24" valign="center" halign="right"><convert type="ClockToText">Format:%a %d/%m/%y</convert></widget>
+                    <screen name="startScreen" flags="wfNoBorder" position="center,center" size="1920,1080">
+                    <widget name="infos" position="85,45" size="1085,55" valign="center" halign="left" zPosition="1" font="Regular;36" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/borders/smallline3.png" position="0,112" size="1920,3" zPosition="1"/>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/borders/smallline3.png" position="0,1010" size="1920,3" zPosition="1"/>
+                    <widget source="global.CurrentTime" render="Label" position="1577,18" size="225,45" transparent="1" zPosition="3" font="Regular;36" foregroundColor="#00ffffff" backgroundColor="#00202020" valign="center" halign="right"><convert type="ClockToText">Format:%-H:%M</convert></widget>
+                    <widget source="global.CurrentTime" render="Label" position="1352,57" size="450,37" transparent="1" zPosition="3" font="Regular;24" foregroundColor="#00ffffff" backgroundColor="#00202020" valign="center" halign="right"><convert type="ClockToText">Format:%a %d/%m/%y</convert></widget>
                     <widget source="session.VideoPicture" render="Pig" position="30,160" size="720,405" backgroundColor="#ff000000" zPosition="1"/>
-                    <widget source="session.CurrentService" render="Label" position="30,125" size="720,36" zPosition="1" foregroundColor="white" transparent="1" font="Regular;28" noWrap="1" valign="center" halign="center"><convert type="ServiceName">Name</convert></widget>
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/buttons/red34.png" position="192,1022" size="34,34" alphatest="blend"/>
-                    <widget name="key_red" position="242,1015" size="370,48" zPosition="1" font="Regular;40" halign="left" backgroundColor="#000000" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/buttons/green34.png" position="628,1022" size="34,34" alphatest="blend"/>
-                    <widget name="key_green" position="678,1015" size="370,48" zPosition="1" font="Regular;40" halign="left" backgroundColor="#000000" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/buttons/yellow34.png" position="1064,1022" size="34,34" alphatest="blend"/>
-                    <widget name="key_yellow" position="1114,1015" size="370,48" zPosition="1" font="Regular;40" halign="left" backgroundColor="#000000" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/buttons/blue34.png" position="1500,1022" size="34,34" alphatest="blend"/>
-                    <widget name="key_blue" position="1550,1015" size="370,48" zPosition="1" font="Regular;40" halign="left" backgroundColor="#000000" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <widget name="helpinfo" position="900,210" size="800,600" valign="top" halign="left" zPosition="1" font="Regular;36" backgroundColor="#000000" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <widget name="helpinfo2" position="900,600" size="800,600" valign="top" halign="left" zPosition="1" font="Regular;36" backgroundColor="#000000" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <widget name="version" position="1350,945" size="600,42" valign="center" halign="left" zPosition="1" font="Regular;36" backgroundColor="#000000" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget source="session.CurrentService" render="Label" position="30,125" size="720,36" zPosition="1" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" font="Regular;28" noWrap="1" valign="center" halign="center"><convert type="ServiceName">Name</convert></widget>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/red34.png" position="192,1022" size="34,34" alphatest="blend"/>
+                    <widget name="key_red" position="242,1015" size="370,48" zPosition="1" font="Regular;40" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/green34.png" position="628,1022" size="34,34" alphatest="blend"/>
+                    <widget name="key_green" position="678,1015" size="370,48" zPosition="1" font="Regular;40" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/yellow34.png" position="1064,1022" size="34,34" alphatest="blend"/>
+                    <widget name="key_yellow" position="1114,1015" size="370,48" zPosition="1" font="Regular;40" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/blue34.png" position="1500,1022" size="34,34" alphatest="blend"/>
+                    <widget name="key_blue" position="1550,1015" size="370,48" zPosition="1" font="Regular;40" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget name="helpinfo" position="900,186" size="800,600" valign="top" halign="left" zPosition="1" font="Regular;36" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget name="version" position="1290,945" size="600,42" valign="center" halign="right" zPosition="1" font="Regular;36" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
                     </screen>"""
         else:
             skin = """
-                    <screen name="startScreen" position="center,center" size="1280,720" title="Weather Plugin">
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/borders/smallline2.png" position="0,88" size="1280,2" zPosition="1"/>
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/borders/smallline2.png" position="0,630" size="1280,2" zPosition="1"/>
-                    <widget source="global.CurrentTime" render="Label" position="1091,12" size="150,55" transparent="1" zPosition="1" font="Regular;24" valign="center" halign="right"><convert type="ClockToText">Format:%-H:%M</convert></widget>
-                    <widget source="global.CurrentTime" render="Label" position="941,32" size="300,55" transparent="1" zPosition="1" font="Regular;16" valign="center" halign="right"><convert type="ClockToText">Format:%a %d/%m/%y</convert></widget>
+                    <screen name="startScreen" flags="wfNoBorder" position="center,center" size="1280,720">
+                    <widget name="infos" position="57,30" size="723,37" valign="center" halign="left" zPosition="1" font="Regular;24" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/borders/smallline2.png" position="0,88" size="1280,2" zPosition="1"/>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/borders/smallline2.png" position="0,630" size="1280,2" zPosition="1"/>
+                    <widget source="global.CurrentTime" render="Label" position="1021,10" size="150,55" transparent="1" zPosition="1" font="Regular;24" foregroundColor="#00ffffff" backgroundColor="#00202020" valign="center" halign="right"><convert type="ClockToText">Format:%-H:%M</convert></widget>
+                    <widget source="global.CurrentTime" render="Label" position="871,30" size="300,55" transparent="1" zPosition="1" font="Regular;16" foregroundColor="#00ffffff" backgroundColor="#00202020" valign="center" halign="right"><convert type="ClockToText">Format:%a %d/%m/%y</convert></widget>
                     <widget source="session.VideoPicture" render="Pig" position="85,120" size="417,243" backgroundColor="#ff000000" zPosition="1"/>
-                    <widget source="session.CurrentService" render="Label" position="85,93" size="417,32" zPosition="1" foregroundColor="white" transparent="1" font="Regular;28" noWrap="1" valign="center" halign="center"><convert type="ServiceName">Name</convert></widget>
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/buttons/red26.png" position="145,663" size="26,26" alphatest="blend"/>
-                    <widget name="key_red" position="185,663" size="220,32" zPosition="1" font="Regular;24" halign="left" backgroundColor="#000000" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/buttons/green26.png" position="420,663" size="26,26" alphatest="blend"/>
-                    <widget name="key_green" position="460,663" size="220,32" zPosition="1" font="Regular;24" halign="left" backgroundColor="#000000" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/buttons/yellow26.png" position="695,663" size="26,26" alphatest="blend"/>
-                    <widget name="key_yellow" position="735,663" size="220,32" zPosition="1" font="Regular;24" halign="left" backgroundColor="#000000" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/buttons/blue26.png" position="970,663" size="26,26" alphatest="blend"/>
-                    <widget name="key_blue" position="1010,663" size="220,32" zPosition="1" font="Regular;24" halign="left" backgroundColor="#000000" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <widget name="helpinfo" position="700,120" size="400,320" valign="top" halign="left" zPosition="1" font="Regular;20" backgroundColor="#000000" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <widget name="helpinfo2" position="700,400" size="400,320" valign="top" halign="left" zPosition="1" font="Regular;20" backgroundColor="#000000" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <widget name="version" position="900,590" size="400,28" valign="center" halign="left" zPosition="1" font="Regular;20" backgroundColor="#000000" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget source="session.CurrentService" render="Label" position="85,93" size="417,32" zPosition="1" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" font="Regular;28" noWrap="1" valign="center" halign="center"><convert type="ServiceName">Name</convert></widget>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/red26.png" position="145,663" size="26,26" alphatest="blend"/>
+                    <widget name="key_red" position="185,663" size="220,32" zPosition="1" font="Regular;24" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/green26.png" position="420,663" size="26,26" alphatest="blend"/>
+                    <widget name="key_green" position="460,663" size="220,32" zPosition="1" font="Regular;24" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/yellow26.png" position="695,663" size="26,26" alphatest="blend"/>
+                    <widget name="key_yellow" position="735,663" size="220,32" zPosition="1" font="Regular;24" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/blue26.png" position="970,663" size="26,26" alphatest="blend"/>
+                    <widget name="key_blue" position="1010,663" size="220,32" zPosition="1" font="Regular;24" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget name="helpinfo" position="700,106" size="400,320" valign="top" halign="left" zPosition="1" font="Regular;20" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget name="version" position="860,590" size="400,28" valign="center" halign="right" zPosition="1" font="Regular;20" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
                     </screen>"""
 
         self.session = session
         Screen.__init__(self, session)
         self.skin = skin
-        self["key_red"] = Label(_("Exit"))
+        self["infos"] = Label(_("Infoscreen"))
+        self["key_red"] = Label("Exit")
         self["key_green"] = Label(_("Standard Icons"))
         self["key_yellow"] = Label(_("Extra Icons "))
         self["key_blue"] = Label(_("Background"))
-        self["helpinfo"] = Label(_("Manual adding Citynumbers:\nGo to www.bbc.com/weather\nSearch city and find citycode in the internetlink.\n\nGo back to \"Location +\" and add cityname-number e.g.\n\"Dusseldorf-2934246\" or \"Dusseld-2934246\"\nDon't forget the \"-\" sign."))
-        self["helpinfo2"] = Label(_("Tip!\nPress the hidden Yellow button in the main menu to change the background.\n\nPress the hidden Green button in the main menu to change the hour interval."))
-        self["actions"] = ActionMap(["WizardActions"], {"back": self.close}, -1)
+        self["helpinfo"] = Label(_("Tip!\nPress the hidden Yellow button in the main menu to open the RainRadar.\n\nPress the hidden Green button in the main menu to change the hour interval.\n\nPress the hidden Blue button in the main menu to compare two cities.\n\nPress OK here to toggle the temperature overlay: %s") % (_("ON") if _overlayEnabled else _("OFF")))
+        self["actions"] = ActionMap(["WizardActions"], {"back": self.close, "ok": self.toggleOverlay}, -1)
         self["ColorActions"] = HelpableActionMap(self, "ColorActions", {"red": self.exit, "green": self.default, "yellow": self.extra, "blue": self.openBackgroundPicker}, -1)
         self["version"] = Label("TheWeather_v.%s" % version)
         AddNewScreen(self)
         self.onClose.append(lambda: RemoveScreen(self))
+        global _overlayInfoscreenOpen
+        _overlayInfoscreenOpen = True
+        _overlayCheckVisibility()
+        self.onClose.append(self._onCloseOverlay)
+
+    def _onCloseOverlay(self):
+        global _overlayInfoscreenOpen
+        _overlayInfoscreenOpen = False
+        _overlayCheckVisibility()
 
     def exit(self):
         self.close()
+
+    def toggleOverlay(self):
+        global _overlayEnabled
+        _overlayEnabled = not _overlayEnabled
+        try:
+            with open(OVERLAY_CFG, "w") as f:
+                f.write("1" if _overlayEnabled else "0")
+        except Exception as e:
+            print("[TheWeather] toggleOverlay: opslaan mislukt:", e)
+        _overlayCheckVisibility()
+        self["helpinfo"].setText(_("Tip!\nPress the hidden Yellow button in the main menu to open the RainRadar.\n\nPress the hidden Green button in the main menu to change the hour interval.\n\nPress the hidden Blue button in the main menu to compare two cities.\n\nPress OK here to toggle the temperature overlay: %s") % (_("ON") if _overlayEnabled else _("OFF")))
 
     def default(self):
         self["helpinfo"].setText(_("Loading standard icons, please wait..."))
@@ -1509,16 +1835,11 @@ class infoscreen(Screen):
             return
         _restartInProgress = True
         icoonpath = nieuwPad
-        if hasattr(eTimer(), "callback"):
-            # OpenATV / H9S / SF8008: vaste vertraging, los van de MessageBox
-            self.session.open(MessageBox, _("Icon pack changed.\nThe plugin will restart..."), MessageBox.TYPE_INFO, timeout=3)
-            _restartTimer = eTimer()
-            _restartTimerConn = safeTimerCallback(_restartTimer, self._finishIconpackRestart)
-            _restartTimer.start(1500, True)
-        else:
-            # Newnigma: pas herstarten zodra de MessageBox echt gesloten is
-            self.session.openWithCallback(self._finishIconpackRestart, MessageBox, _("Icon pack changed.\nThe plugin will restart..."), MessageBox.TYPE_INFO, timeout=3)
-    
+        self.session.open(MessageBox, _("Icon pack changed.\nThe plugin will restart..."), MessageBox.TYPE_INFO, timeout=3)
+        _restartTimer = eTimer()
+        _restartTimerConn = safeTimerCallback(_restartTimer, self._finishIconpackRestart)
+        _restartTimer.start(1500, True)
+
     def _finishIconpackRestart(self, ret=None):
         global _restartTimer, _restartTimerConn
         sess = self.session
@@ -1530,38 +1851,40 @@ class infoscreen(Screen):
 
 
 class CityPickerScreen(Screen):
-    """Dropdown for 2nd location - same style as localcityscreen."""
+    """2e location"""
 
     def __init__(self, session, steden):
         Screen.__init__(self, session)
+        AddNewScreen(self)
+        self.onClose.append(lambda: RemoveScreen(self))
 
         if sz_w > 1800:
             skin = """
-                <screen name="CityPickerScreen" position="center,center" size="1920,1080" title="Choose 2nd location">
-                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/borders/smallline3.png" position="0,112" size="1920,3" zPosition="1"/>
-                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/borders/smallline3.png" position="0,1010" size="1920,3" zPosition="1"/>
-                <widget source="global.CurrentTime" render="Label" position="1634,35" size="225,45" transparent="1" zPosition="3" font="Regular;36" valign="center" halign="right"><convert type="ClockToText">Format:%-H:%M</convert></widget>
-                <widget source="global.CurrentTime" render="Label" position="1409,74" size="450,37" transparent="1" zPosition="3" font="Regular;24" valign="center" halign="right"><convert type="ClockToText">Format:%a %d/%m/%y</convert></widget>
+                <screen name="CityPickerScreen" flags="wfNoBorder" position="center,center" size="1920,1080">
+                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/borders/smallline3.png" position="0,112" size="1920,3" zPosition="1"/>
+                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/borders/smallline3.png" position="0,1010" size="1920,3" zPosition="1"/>
+                <widget source="global.CurrentTime" render="Label" position="1634,35" size="225,45" transparent="1" zPosition="3" font="Regular;36" foregroundColor="#00ffffff" backgroundColor="#00202020" valign="center" halign="right"><convert type="ClockToText">Format:%-H:%M</convert></widget>
+                <widget source="global.CurrentTime" render="Label" position="1409,74" size="450,37" transparent="1" zPosition="3" font="Regular;24" foregroundColor="#00ffffff" backgroundColor="#00202020" valign="center" halign="right"><convert type="ClockToText">Format:%a %d/%m/%y</convert></widget>
                 <widget source="session.VideoPicture" render="Pig" position="30,160" size="720,405" backgroundColor="#ff000000" zPosition="1"/>
-                <widget source="session.CurrentService" render="Label" position="30,125" size="720,36" zPosition="1" foregroundColor="white" transparent="1" font="Regular;28" noWrap="1" valign="center" halign="center"><convert type="ServiceName">Name</convert></widget>
-                <widget name="list" position="840,160" size="900,630" scrollbarMode="showOnDemand" selectionPixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/list/list97563.png"/>
-                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/buttons/red34.png" position="192,1022" size="34,34" alphatest="blend"/>
-                <widget name="key_red" position="242,1015" size="370,48" zPosition="1" font="Regular;40" halign="left" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                <widget name="titel" position="840,50" size="900,55" valign="center" halign="left" zPosition="1" font="Regular;44" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget source="session.CurrentService" render="Label" position="30,125" size="720,36" zPosition="1" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" font="Regular;28" noWrap="1" valign="center" halign="center"><convert type="ServiceName">Name</convert></widget>
+                <widget name="list" position="840,160" size="975,630" scrollbarMode="showOnDemand" selectionPixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/list/list97563.png"/>
+                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/red34.png" position="192,1022" size="34,34" alphatest="blend"/>
+                <widget name="key_red" position="242,1015" size="370,48" zPosition="1" font="Regular;40" halign="left" transparent="1" foregroundColor="#00ffffff" backgroundColor="#00202020" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget name="2elocation" position="840,50" size="900,55" valign="center" halign="left" zPosition="1" font="Regular;44" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
                 </screen>"""
         else:
             skin = """
-                <screen name="CityPickerScreen" position="center,center" size="1280,720" title="Choose 2nd location">
-                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/borders/smallline2.png" position="0,88" size="1280,2" zPosition="1"/>
-                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/borders/smallline2.png" position="0,650" size="1280,2" zPosition="1"/>
-                <widget source="global.CurrentTime" render="Label" position="1091,12" size="150,55" transparent="1" zPosition="1" font="Regular;24" valign="center" halign="right"><convert type="ClockToText">Format:%-H:%M</convert></widget>
-                <widget source="global.CurrentTime" render="Label" position="941,32" size="300,55" transparent="1" zPosition="1" font="Regular;16" valign="center" halign="right"><convert type="ClockToText">Format:%a %d/%m/%y</convert></widget>
+                <screen name="CityPickerScreen" flags="wfNoBorder" position="center,center" size="1280,720">
+                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/borders/smallline2.png" position="0,88" size="1280,2" zPosition="1"/>
+                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/borders/smallline2.png" position="0,630" size="1280,2" zPosition="1"/>
+                <widget source="global.CurrentTime" render="Label" position="1091,12" size="150,55" transparent="1" zPosition="1" font="Regular;24" foregroundColor="#00ffffff" backgroundColor="#00202020" valign="center" halign="left"><convert type="ClockToText">Format:%-H:%M</convert></widget>
+                <widget source="global.CurrentTime" render="Label" position="941,32" size="300,55" transparent="1" zPosition="1" font="Regular;16" foregroundColor="#00ffffff" backgroundColor="#00202020" valign="center" halign="left"><convert type="ClockToText">Format:%a %d/%m/%y</convert></widget>
                 <widget source="session.VideoPicture" render="Pig" position="85,120" size="417,243" backgroundColor="#ff000000" zPosition="1"/>
-                <widget source="session.CurrentService" render="Label" position="85,93" size="417,32" zPosition="1" foregroundColor="white" transparent="1" font="Regular;28" noWrap="1" valign="center" halign="center"><convert type="ServiceName">Name</convert></widget>
-                <widget name="list" position="630,100" size="620,462" scrollbarMode="showOnDemand" selectionPixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/list/list65043.png"/>
-                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/buttons/red26.png" position="145,663" size="26,26" alphatest="blend"/>
-                <widget name="key_red" position="185,663" size="220,32" zPosition="1" font="Regular;24" halign="left" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                <widget name="titel" position="630,30" size="620,50" valign="center" halign="left" zPosition="1" font="Regular;36" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget source="session.CurrentService" render="Label" position="85,93" size="417,32" zPosition="1" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" font="Regular;28" noWrap="1" valign="center" halign="center"><convert type="ServiceName">Name</convert></widget>
+                <widget name="list" position="630,100" size="650,462" scrollbarMode="showOnDemand" selectionPixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/list/list65043.png"/>
+                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/red26.png" position="145,663" size="26,26" alphatest="blend"/>
+                <widget name="key_red" position="185,663" size="220,32" zPosition="1" font="Regular;24" foregroundColor="#00ffffff" backgroundColor="#00202020" halign="left" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget name="2elocation" position="630,30" size="620,50" valign="center" halign="left" zPosition="1" font="Regular;36" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
                 </screen>"""
 
         self.skin = skin
@@ -1569,7 +1892,7 @@ class CityPickerScreen(Screen):
         self.res = []
 
         for stad in steden:
-            cleanmadecity = str(stad).split("-")[0]
+            cleanmadecity = stripCoords(stad).rsplit("-", 1)[0]
             if sz_w > 1800:
                 self.res.append([stad, MultiContentEntryText(pos=(0, 0), size=(860, 63), font=0, flags=RT_HALIGN_LEFT, text=cleanmadecity, color_sel=0x00D2D226)])
             else:
@@ -1583,8 +1906,8 @@ class CityPickerScreen(Screen):
             self["list"].l.setItemHeight(42)
             self["list"].l.setFont(0, gFont("Regular", 33))
         self["list"].show()
-        self["titel"] = Label(_("Choose 2nd location:"))
-        self["key_red"] = Label(_("Back"))
+        self["2elocation"] = Label(_("Choose 2nd location:"))
+        self["key_red"] = Label("Exit")
         self["actions"] = ActionMap(["WizardActions", "MenuActions"], {
             "ok": self.selecteer,
             "back": self.annuleer,
@@ -1626,77 +1949,76 @@ class twolocations(Screen):
 
         if sz_w > 1800:
             skin = """
-                <screen name="twolocations" position="center,center" size="1920,1080" title="Compare Locations">
-                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/borders/smallline3.png" position="0,112" size="1920,3" zPosition="1"/>
-                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/borders/smallline3.png" position="0,980" size="1920,3" zPosition="1"/>
-                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/borders/smallline3.png" position="958,112" size="3,868" zPosition="1"/>
-                <widget source="global.CurrentTime" render="Label" position="1634,35" size="225,45" transparent="1" zPosition="3" font="Regular;36" valign="center" halign="right"><convert type="ClockToText">Format:%-H:%M</convert></widget>
-                <widget source="global.CurrentTime" render="Label" position="1409,74" size="450,37" transparent="1" zPosition="3" font="Regular;24" valign="center" halign="right"><convert type="ClockToText">Format:%a %d/%m/%y</convert></widget>
-                <widget name="loc1name"     position="40,125"   size="880,72"  zPosition="3" font="Regular;58" halign="center" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <screen name="twolocations" flags="wfNoBorder" position="center,center" size="1920,1080">
+                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/borders/smallline3.png" position="0,112" size="1920,3" zPosition="1"/>
+                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/borders/smallline3.png" position="0,1010" size="1920,3" zPosition="1"/>
+                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/borders/smallline3.png" position="958,112" size="3,868" zPosition="1"/>
+                <widget source="global.CurrentTime" render="Label" position="1634,35" size="225,45" transparent="1" zPosition="3" font="Regular;36" foregroundColor="#00ffffff" backgroundColor="#00202020" valign="center" halign="right"><convert type="ClockToText">Format:%-H:%M</convert></widget>
+                <widget source="global.CurrentTime" render="Label" position="1409,74" size="450,37" transparent="1" zPosition="3" font="Regular;24" foregroundColor="#00ffffff" backgroundColor="#00202020" valign="center" halign="right"><convert type="ClockToText">Format:%a %d/%m/%y</convert></widget>
+                <widget name="loc1name"     position="40,125"   size="880,72"  zPosition="3" font="Regular;58" foregroundColor="#00ffffff" backgroundColor="#00202020" halign="center" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
                 <widget name="loc1icon"     position="140,215"  size="160,160" zPosition="3" alphatest="blend"/>
-                <widget name="loc1maxtemp"  position="320,215"  size="380,95"  zPosition="3" font="Regular;78" halign="left" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                <widget name="loc1mintemp"  position="320,310"  size="380,60"  zPosition="3" font="Regular;48" halign="left" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                <widget name="loc1weertype" position="320,400"  size="600,56"  zPosition="3" font="Regular;44" halign="left" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                <widget name="loc1feel"     position="320,468"  size="600,52"  zPosition="3" font="Regular;40" halign="left" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                <widget name="loc1wind"     position="320,530"  size="600,52"  zPosition="3" font="Regular;40" halign="left" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                <widget name="loc1rain"     position="320,592"  size="600,52"  zPosition="3" font="Regular;40" halign="left" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                <widget name="loc1sun"      position="320,654"  size="600,52"  zPosition="3" font="Regular;40" halign="left" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                <widget name="loc1alert"    position="320,720"  size="808,68"  zPosition="3" font="Regular;48" halign="left" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget name="loc1maxtemp"  position="320,215"  size="380,95"  zPosition="3" font="Regular;78" foregroundColor="#00ffffff" backgroundColor="#00202020" halign="left" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget name="loc1mintemp"  position="320,310"  size="380,60"  zPosition="3" font="Regular;48" foregroundColor="#00ffffff" backgroundColor="#00202020" halign="left" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget name="loc1weertype" position="320,400"  size="600,56"  zPosition="3" font="Regular;44" foregroundColor="#00ffffff" backgroundColor="#00202020" halign="left" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget name="loc1feel"     position="320,468"  size="600,52"  zPosition="3" font="Regular;40" foregroundColor="#00ffffff" backgroundColor="#00202020" halign="left" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget name="loc1wind"     position="320,530"  size="600,52"  zPosition="3" font="Regular;40" foregroundColor="#00ffffff" backgroundColor="#00202020" halign="left" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget name="loc1rain"     position="320,592"  size="600,52"  zPosition="3" font="Regular;40" foregroundColor="#00ffffff" backgroundColor="#00202020" halign="left" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget name="loc1sun"      position="320,654"  size="600,52"  zPosition="3" font="Regular;40" foregroundColor="#00ffffff" backgroundColor="#00202020" halign="left" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget name="loc1alert"    position="320,720"  size="808,68"  zPosition="3" font="Regular;48" foregroundColor="#00ffffff" backgroundColor="#00202020" halign="left" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
                 <widget name="loc1alerticon" position="216,724"  size="64,64"   zPosition="4" alphatest="blend" transparent="1"/>
-                <widget name="loc2name"     position="1000,125" size="880,72"  zPosition="3" font="Regular;58" halign="center" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget name="loc2name"     position="1000,125" size="880,72"  zPosition="3" font="Regular;58" foregroundColor="#00ffffff" backgroundColor="#00202020" halign="center" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
                 <widget name="loc2icon"     position="1100,215" size="160,160" zPosition="3" alphatest="blend"/>
-                <widget name="loc2maxtemp"  position="1280,215" size="380,95"  zPosition="3" font="Regular;78" halign="left" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                <widget name="loc2mintemp"  position="1280,310" size="380,60"  zPosition="3" font="Regular;48" halign="left" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                <widget name="loc2weertype" position="1280,400" size="600,56"  zPosition="3" font="Regular;44" halign="left" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                <widget name="loc2feel"     position="1280,468" size="600,52"  zPosition="3" font="Regular;40" halign="left" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                <widget name="loc2wind"     position="1280,530" size="600,52"  zPosition="3" font="Regular;40" halign="left" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                <widget name="loc2rain"     position="1280,592" size="600,52"  zPosition="3" font="Regular;40" halign="left" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                <widget name="loc2sun"      position="1280,654" size="600,52"  zPosition="3" font="Regular;40" halign="left" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                <widget name="loc2alert"    position="1280,720" size="808,68"  zPosition="3" font="Regular;48" halign="left" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget name="loc2maxtemp"  position="1280,215" size="380,95"  zPosition="3" font="Regular;78" foregroundColor="#00ffffff" backgroundColor="#00202020" halign="left" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget name="loc2mintemp"  position="1280,310" size="380,60"  zPosition="3" font="Regular;48" foregroundColor="#00ffffff" backgroundColor="#00202020" halign="left" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget name="loc2weertype" position="1280,400" size="600,56"  zPosition="3" font="Regular;44" foregroundColor="#00ffffff" backgroundColor="#00202020" halign="left" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget name="loc2feel"     position="1280,468" size="600,52"  zPosition="3" font="Regular;40" foregroundColor="#00ffffff" backgroundColor="#00202020" halign="left" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget name="loc2wind"     position="1280,530" size="600,52"  zPosition="3" font="Regular;40" foregroundColor="#00ffffff" backgroundColor="#00202020" halign="left" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget name="loc2rain"     position="1280,592" size="600,52"  zPosition="3" font="Regular;40" foregroundColor="#00ffffff" backgroundColor="#00202020" halign="left" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget name="loc2sun"      position="1280,654" size="600,52"  zPosition="3" font="Regular;40" foregroundColor="#00ffffff" backgroundColor="#00202020" halign="left" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget name="loc2alert"    position="1280,720" size="808,68"  zPosition="3" font="Regular;48" foregroundColor="#00ffffff" backgroundColor="#00202020" halign="left" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
                 <widget name="loc2alerticon" position="1176,724" size="64,64"  zPosition="4" alphatest="blend" transparent="1"/>
-                <widget name="statusmsg"    position="40,808"   size="1840,56" zPosition="3" font="Regular;40" halign="center" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/buttons/red34.png"    position="192,1022"  size="34,34" alphatest="blend"/>
-                <widget name="key_red"    position="242,1015"  size="370,48" zPosition="3" font="Regular;40" halign="left" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/buttons/yellow34.png" position="628,1022"  size="34,34" alphatest="blend"/>
-                <widget name="comp" position="85,45" size="1085,55" valign="center" halign="left" zPosition="1" font="Regular;36" backgroundColor="#000000" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                <widget name="key_yellow" position="678,1015"  size="600,48" zPosition="3" font="Regular;40" halign="left" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget name="statusmsg"    position="40,808"   size="1840,56" zPosition="3" font="Regular;40" foregroundColor="#00ffffff" backgroundColor="#00202020" halign="center" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/red34.png"    position="192,1022"  size="34,34" alphatest="blend"/>
+                <widget name="key_red" position="242,1015"  size="370,48" zPosition="3" font="Regular;40" foregroundColor="#00ffffff" backgroundColor="#00202020" halign="left" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/yellow34.png" position="628,1022"  size="34,34" alphatest="blend"/>
+                <widget name="comp" position="85,45" size="1085,55" valign="center" halign="left" zPosition="1" font="Regular;36" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget name="key_yellow" position="678,1015"  size="600,48" zPosition="3" font="Regular;40" foregroundColor="#00ffffff" backgroundColor="#00202020" halign="left" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
                 </screen>"""
         else:
             skin = """
-                <screen name="twolocations" position="center,center" size="1280,720" title="Compare Locations">
-                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/borders/smallline2.png" position="0,88"   size="1280,2" zPosition="1"/>
-                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/borders/smallline2.png" position="0,678"  size="1280,2" zPosition="1"/>
-                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/borders/smallline2.png" position="638,88"  size="2,590" zPosition="1"/>
-                <widget source="global.CurrentTime" render="Label" position="1090,18" size="170,40" transparent="1" zPosition="3" font="Regular;30" valign="center" halign="right"><convert type="ClockToText">Format:%-H:%M</convert></widget>
-                <widget source="global.CurrentTime" render="Label" position="940,52"  size="320,34" transparent="1" zPosition="3" font="Regular;20" valign="center" halign="right"><convert type="ClockToText">Format:%a %d/%m/%y</convert></widget>
-                <widget name="loc1name"     position="244,95"    size="618,52"  zPosition="3" font="Regular;42" halign="left" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                <widget name="loc1icon"     position="104,158"   size="130,130" zPosition="3" alphatest="blend"/>
-                <widget name="loc1maxtemp"  position="244,158"  size="470,80"  zPosition="3" font="Regular;72" halign="left" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                <widget name="loc1mintemp"  position="244,238"  size="470,44"  zPosition="3" font="Regular;36" halign="left" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                <widget name="loc1weertype" position="244,296"  size="474,44"  zPosition="3" font="Regular;34" halign="left" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                <widget name="loc1feel"     position="244,348"  size="474,40"  zPosition="3" font="Regular;32" halign="left" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                <widget name="loc1wind"     position="244,394"  size="474,40"  zPosition="3" font="Regular;32" halign="left" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                <widget name="loc1rain"     position="244,440"  size="474,40"  zPosition="3" font="Regular;32" halign="left" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                <widget name="loc1sun"      position="244,486"  size="474,40"  zPosition="3" font="Regular;32" halign="left" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                <widget name="loc1alert"    position="244,538"  size="576,50"  zPosition="3" font="Regular;36" halign="left" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                <widget name="loc1alerticon" position="183,542"  size="42,42"   zPosition="4" alphatest="blend" transparent="1"/>
-                <widget name="loc2name"     position="842,95"   size="618,52"  zPosition="3" font="Regular;42" halign="left" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                <widget name="loc2icon"     position="702,158"  size="130,130" zPosition="3" alphatest="blend"/>
-                <widget name="loc2maxtemp"  position="842,158"  size="470,80"  zPosition="3" font="Regular;72" halign="left" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                <widget name="loc2mintemp"  position="842,238"  size="470,44"  zPosition="3" font="Regular;36" halign="left" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                <widget name="loc2weertype" position="842,296"  size="474,44"  zPosition="3" font="Regular;34" halign="left" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                <widget name="loc2feel"     position="842,348"  size="474,40"  zPosition="3" font="Regular;32" halign="left" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                <widget name="loc2wind"     position="842,394"  size="474,40"  zPosition="3" font="Regular;32" halign="left" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                <widget name="loc2rain"     position="842,440"  size="474,40"  zPosition="3" font="Regular;32" halign="left" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                <widget name="loc2sun"      position="842,486"  size="474,40"  zPosition="3" font="Regular;32" halign="left" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                <widget name="loc2alert"    position="842,538"  size="576,50"  zPosition="3" font="Regular;36" halign="left" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                <widget name="loc2alerticon" position="781,542" size="42,42"   zPosition="4" alphatest="blend" transparent="1"/>
-                <widget name="statusmsg"    position="10,602"   size="1260,44" zPosition="3" font="Regular;30" halign="center" valign="center" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/buttons/red26.png"    position="100,688" size="26,26" alphatest="blend"/>
-                <widget name="key_red"    position="138,685"  size="240,32" zPosition="3" font="Regular;26" halign="left" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/buttons/yellow26.png" position="440,688" size="26,26" alphatest="blend"/>
-                <widget name="comp" position="57,30" size="723,37" valign="center" halign="left" zPosition="1" font="Regular;24" backgroundColor="#000000" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                <widget name="key_yellow" position="478,685"  size="440,32" zPosition="3" font="Regular;26" halign="left" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <screen name="twolocations" flags="wfNoBorder" position="center,center" size="1280,720">
+                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/borders/smallline2.png" position="0,88"   size="1280,2" zPosition="1"/>
+                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/borders/smallline2.png" position="0,630" size="1280,2" zPosition="1"/>
+                <widget source="global.CurrentTime" render="Label" position="1090,18" size="170,40" transparent="1" zPosition="3" font="Regular;30" foregroundColor="#00ffffff" backgroundColor="#00202020" valign="center" halign="right"><convert type="ClockToText">Format:%-H:%M</convert></widget>
+                <widget source="global.CurrentTime" render="Label" position="940,52"  size="320,34" transparent="1" zPosition="3" font="Regular;20" foregroundColor="#00ffffff" backgroundColor="#00202020" valign="center" halign="right"><convert type="ClockToText">Format:%a %d/%m/%y</convert></widget>
+                <widget name="loc1name"     position="244,95"    size="618,52"  zPosition="3" font="Regular;42" halign="left" valign="center" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget name="loc1icon"     position="94,143"   size="130,130" scale="1" zPosition="3" alphatest="blend"/>
+                <widget name="loc1maxtemp"  position="244,158"  size="470,80"  zPosition="3" font="Regular;72" halign="left" valign="center" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget name="loc1mintemp"  position="244,238"  size="470,44"  zPosition="3" font="Regular;36" halign="left" valign="center" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget name="loc1weertype" position="244,296"  size="474,44"  zPosition="3" font="Regular;34" halign="left" valign="center" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget name="loc1feel"     position="244,348"  size="474,40"  zPosition="3" font="Regular;32" halign="left" valign="center" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget name="loc1wind"     position="244,394"  size="474,40"  zPosition="3" font="Regular;32" halign="left" valign="center" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget name="loc1rain"     position="244,440"  size="474,40"  zPosition="3" font="Regular;32" halign="left" valign="center" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget name="loc1sun"      position="244,486"  size="474,40"  zPosition="3" font="Regular;32" halign="left" valign="center" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget name="loc1alert"    position="244,538"  size="576,50"  zPosition="3" font="Regular;36" halign="left" valign="center" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget name="loc1alerticon" position="183,542"  size="42,42"   zPosition="4" alphatest="blend" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1"/>
+                <widget name="loc2name"     position="842,95"   size="618,52"  zPosition="3" font="Regular;42" halign="left" valign="center" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget name="loc2icon"     position="692,143"  size="130,130" scale="1" zPosition="3" alphatest="blend"/>
+                <widget name="loc2maxtemp"  position="842,158"  size="470,80"  zPosition="3" font="Regular;72" halign="left" valign="center" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget name="loc2mintemp"  position="842,238"  size="470,44"  zPosition="3" font="Regular;36" halign="left" valign="center" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget name="loc2weertype" position="842,296"  size="474,44"  zPosition="3" font="Regular;34" halign="left" valign="center" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget name="loc2feel"     position="842,348"  size="474,40"  zPosition="3" font="Regular;32" halign="left" valign="center" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget name="loc2wind"     position="842,394"  size="474,40"  zPosition="3" font="Regular;32" halign="left" valign="center" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget name="loc2rain"     position="842,440"  size="474,40"  zPosition="3" font="Regular;32" halign="left" valign="center" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget name="loc2sun"      position="842,486"  size="474,40"  zPosition="3" font="Regular;32" halign="left" valign="center" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget name="loc2alert"    position="842,538"  size="576,50"  zPosition="3" font="Regular;36" halign="left" valign="center" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget name="loc2alerticon" position="781,542" size="42,42"   zPosition="4" alphatest="blend" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1"/>
+                <widget name="statusmsg"    position="10,602"   size="1260,44" zPosition="3" font="Regular;30" halign="center" valign="center" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/red26.png" position="145,663" size="26,26" alphatest="blend"/>
+                <widget name="key_red" position="185,663" size="220,32" zPosition="1" font="Regular;24" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget name="comp" position="57,30" size="723,37" valign="center" halign="left" zPosition="1" font="Regular;24"  foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/yellow26.png" position="695,663" size="26,26" alphatest="blend"/>
+                <widget name="key_yellow" position="735,663" size="220,32" zPosition="1" font="Regular;24" halign="left"  foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
                 </screen>"""
 
         self.skin = skin
@@ -1709,8 +2031,8 @@ class twolocations(Screen):
             self[n] = Pixmap()
 
         self["actions"] = ActionMap(["WizardActions","MenuActions"], {"back": self.exit, "cancel": self.exit}, -1)
-        self["ColorActions"] = HelpableActionMap(self, "ColorActions", {"red": self.exit, "yellow": self.changeCompareCity}, -1)
-        self["key_red"] = Label(_("Back"))
+        self["ColorActions"] = HelpableActionMap(self, "ColorActions", {"red": self.exit, "yellow": self.changeCompareCity, "blue": self.exit}, -1)
+        self["key_red"] = Label("Exit")
         self["key_yellow"] = Label(_("Choose 2nd location"))
         self["comp"] = Label(_("Compare Locations"))
 
@@ -1800,9 +2122,9 @@ class twolocations(Screen):
                     pass
                 try:
                     if sz_w > 1800:
-                        alerticon = "/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/" + icoonpath + "/alert/alert_" + alertkleur + ".png"
+                        alerticon = "/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/" + SHARED_PACK + "/alert/alert_" + alertkleur + ".png"
                     else:
-                        alerticon = "/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/" + icoonpath + "/alert/alert_" + alertkleur + "_sd.png"
+                        alerticon = "/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/" + SHARED_PACK + "/alert/alert_" + alertkleur + "_sd.png"
                     if self[prefix + "alerticon"].instance is not None:
                         self[prefix + "alerticon"].instance.setPixmapFromFile(alerticon)
                         self[prefix + "alerticon"].show()
@@ -1819,7 +2141,7 @@ class twolocations(Screen):
             if sz_w > 1800:
                 iconbestand = "/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/" + icoonpath + "/iconbighd/" + str(iconcode) + ".png"
             else:
-                iconbestand = "/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/" + icoonpath + "/iconbigsd/" + str(iconcode) + ".png"
+                iconbestand = "/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/" + icoonpath + "/iconbighd/" + str(iconcode) + ".png"
             try:
                 if self[prefix + "icon"].instance is not None:
                     self[prefix + "icon"].instance.setPixmapFromFile(iconbestand)
@@ -1829,7 +2151,7 @@ class twolocations(Screen):
             pass
 
     def reloadIcons(self):
-        """Reload the weather icons after the skin is fully applied."""
+        
         self.fillLoc1()
         if self.compareCity:
             self.fillLoc2(self.compareCity)
@@ -1880,50 +2202,48 @@ class twolocations(Screen):
 
 
 class BackgroundPickerScreen(Screen):
-    """Dropdown for background images - same style as CityPickerScreen.
-    Scans the backgrounds/ directory within the plugin and lets the user choose.
-    The selection is saved in /etc/enigma2/TheWeather_bg.cfg."""
-
     BG_CFG = CFG_DIR + "/TheWeather_bg.cfg"
     BG_DIR = "/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/backgrounds/"
     EXTENSIONS = (".jpg", ".jpeg", ".png", ".bmp")
 
     def __init__(self, session):
         Screen.__init__(self, session)
+        AddNewScreen(self)
+        self.onClose.append(lambda: RemoveScreen(self))
 
         if sz_w > 1800:
             skin = """
-                <screen name="BackgroundPickerScreen" position="center,center" size="1920,1080" title="Choose Background">
-                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/borders/smallline3.png" position="0,112" size="1920,3" zPosition="1"/>
-                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/borders/smallline3.png" position="0,1010" size="1920,3" zPosition="1"/>
-                <widget source="global.CurrentTime" render="Label" position="1634,35" size="225,45" transparent="1" zPosition="3" font="Regular;36" valign="center" halign="right"><convert type="ClockToText">Format:%-H:%M</convert></widget>
-                <widget source="global.CurrentTime" render="Label" position="1409,74" size="450,37" transparent="1" zPosition="3" font="Regular;24" valign="center" halign="right"><convert type="ClockToText">Format:%a %d/%m/%y</convert></widget>
+                <screen name="BackgroundPickerScreen" flags="wfNoBorder" position="center,center" size="1920,1080">
+                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/borders/smallline3.png" position="0,112" size="1920,3" zPosition="1"/>
+                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/borders/smallline3.png" position="0,1010" size="1920,3" zPosition="1"/>
+                <widget source="global.CurrentTime" render="Label" position="1634,35" size="225,45" transparent="1" zPosition="3" font="Regular;36" foregroundColor="#00ffffff" backgroundColor="#00202020" valign="center" halign="right"><convert type="ClockToText">Format:%-H:%M</convert></widget>
+                <widget source="global.CurrentTime" render="Label" position="1409,74" size="450,37" transparent="1" zPosition="3" font="Regular;24" foregroundColor="#00ffffff" backgroundColor="#00202020" valign="center" halign="right"><convert type="ClockToText">Format:%a %d/%m/%y</convert></widget>
                 <widget name="preview" position="30,160" size="720,405" zPosition="1" alphatest="blend"/>
-                <widget name="list" position="840,160" size="900,630" scrollbarMode="showOnDemand" selectionPixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/list/list97563.png"/>
-                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/buttons/red34.png" position="192,1022" size="34,34" alphatest="blend"/>
-                <widget name="key_red" position="242,1015" size="370,48" zPosition="1" font="Regular;40" halign="left" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/buttons/green34.png" position="628,1022" size="34,34" alphatest="blend"/>
-                <widget name="key_green" position="678,1015" size="600,48" zPosition="1" font="Regular;40" halign="left" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/buttons/yellow34.png" position="1200,1022" size="34,34" alphatest="blend"/>
-                <widget name="key_yellow" position="1250,1015" size="600,48" zPosition="1" font="Regular;40" halign="left" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                <widget name="titel" position="85,45" size="1085,55" valign="center" halign="left" zPosition="1" font="Regular;36" backgroundColor="#000000" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget name="list" position="840,160" size="975,756" scrollbarMode="showOnDemand" selectionPixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/list/list97563.png"/>
+                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/red34.png" position="192,1022" size="34,34" alphatest="blend"/>
+                <widget name="key_red" position="242,1015" size="370,48" zPosition="1" font="Regular;40" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/green34.png" position="628,1022" size="34,34" alphatest="blend"/>
+                <widget name="key_green" position="678,1015" size="600,48" zPosition="1" font="Regular;40" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/yellow34.png" position="1200,1022" size="34,34" alphatest="blend"/>
+                <widget name="key_yellow" position="1250,1015" size="600,48" zPosition="1" font="Regular;40" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget name="backgr" position="85,45" size="1085,55" valign="center" halign="left" zPosition="1" font="Regular;36" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
                 </screen>"""
         else:
             skin = """
-                <screen name="BackgroundPickerScreen" position="center,center" size="1280,720" title="Choose Background">
-                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/borders/smallline2.png" position="0,88" size="1280,2" zPosition="1"/>
-                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/borders/smallline2.png" position="0,650" size="1280,2" zPosition="1"/>
-                <widget source="global.CurrentTime" render="Label" position="1091,12" size="150,55" transparent="1" zPosition="1" font="Regular;24" valign="center" halign="right"><convert type="ClockToText">Format:%-H:%M</convert></widget>
-                <widget source="global.CurrentTime" render="Label" position="941,32" size="300,55" transparent="1" zPosition="1" font="Regular;16" valign="center" halign="right"><convert type="ClockToText">Format:%a %d/%m/%y</convert></widget>
+                <screen name="BackgroundPickerScreen" flags="wfNoBorder" position="center,center" size="1280,720">
+                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/borders/smallline2.png" position="0,88" size="1280,2" zPosition="1"/>
+                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/borders/smallline2.png" position="0,630" size="1280,2" zPosition="1"/>
+                <widget source="global.CurrentTime" render="Label" position="1091,12" size="150,55" transparent="1" zPosition="1" font="Regular;24" foregroundColor="#00ffffff" backgroundColor="#00202020" valign="center" halign="right"><convert type="ClockToText">Format:%-H:%M</convert></widget>
+                <widget source="global.CurrentTime" render="Label" position="941,32" size="300,55" transparent="1" zPosition="1" font="Regular;16" foregroundColor="#00ffffff" backgroundColor="#00202020" valign="center" halign="right"><convert type="ClockToText">Format:%a %d/%m/%y</convert></widget>
                 <widget name="preview" position="20,110" size="417,243" zPosition="1" alphatest="blend"/>
-                <widget name="list" position="630,100" size="650,530" scrollbarMode="showOnDemand" selectionPixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/list/list65043.png"/>
-                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/buttons/red26.png" position="50,663" size="26,26" alphatest="blend"/>
-                <widget name="key_red" position="90,663" size="180,32" zPosition="1" font="Regular;24" halign="left" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/buttons/green26.png" position="320,663" size="26,26" alphatest="blend"/>
-                <widget name="key_green" position="360,663" size="280,32" zPosition="1" font="Regular;24" halign="left" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/buttons/yellow26.png" position="700,663" size="26,26" alphatest="blend"/>
-                <widget name="key_yellow" position="735,663" size="280,32" zPosition="1" font="Regular;24" halign="left" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                <widget name="titel" position="57,30" size="723,37" valign="center" halign="left" zPosition="1" font="Regular;24" backgroundColor="#000000" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget name="list" position="630,100" size="650,530" scrollbarMode="showOnDemand" selectionPixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/list/list65043.png"/>
+                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/red26.png" position="145,663" size="26,26" alphatest="blend"/>
+                <widget name="key_red" position="185,663" size="220,32" zPosition="1" font="Regular;24" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/green26.png" position="420,663" size="26,26" alphatest="blend"/>
+                <widget name="key_green" position="460,663" size="220,32" zPosition="1" font="Regular;24" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/yellow26.png" position="700,663" size="26,26" alphatest="blend"/>
+                <widget name="key_yellow" position="735,663" size="280,32" zPosition="1" font="Regular;24" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget name="backgr" position="57,30" size="723,37" valign="center" halign="left" zPosition="1" font="Regular;24" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
                 </screen>"""
 
         self.skin = skin
@@ -1938,7 +2258,7 @@ class BackgroundPickerScreen(Screen):
 
         self.res = []
         for pad in self._bestanden:
-            naam = _("Standard (iconpack)") if pad == "" else os.path.basename(pad)
+            naam = _("Standard") if pad == "" else os.path.basename(pad)
             if sz_w > 1800:
                 self.res.append([pad, MultiContentEntryText(pos=(0, 0), size=(860, 63), font=0, flags=RT_HALIGN_LEFT, text=naam, color_sel=0x00D2D226)])
             else:
@@ -1953,8 +2273,8 @@ class BackgroundPickerScreen(Screen):
             self["list"].l.setFont(0, gFont("Regular", 33))
         self["list"].show()
 
-        self["titel"] = Label(_("Choose background:"))
-        self["key_red"] = Label(_("Back"))
+        self["backgr"] = Label(_("Choose background:"))
+        self["key_red"] = Label("Exit")
         self["key_green"] = Label(_("Select"))
         self["key_yellow"] = Label(_("Standard"))
         self["preview"] = Pixmap()
@@ -1998,9 +2318,9 @@ class BackgroundPickerScreen(Screen):
         pad = self._bestanden[idx] if idx < len(self._bestanden) else ""
         if not pad:
             if sz_w > 1800:
-                pad = "/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/" + icoonpath + "/backgroundhd.png"
+                pad = "/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/" + SHARED_PACK + "/backgroundhd.png"
             else:
-                pad = "/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/" + icoonpath + "/background.png"
+                pad = "/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/" + SHARED_PACK + "/backgroundhd.png"
         try:
             if sz_w > 1800:
                 self.picload.setPara([720, 405, 1, 1, False, 1, "#ff000000"])
@@ -2063,17 +2383,14 @@ class BackgroundPickerScreen(Screen):
     def annuleer(self):
         self.close(False)
 
-
 def AddNewScreen(screen):
     screens.append(screen)
-
 
 def RemoveScreen(screen):
     try:
         screens.remove(screen)
     except ValueError:
         pass
-
 
 def ClosePlugin():
     for screen in list(screens):
@@ -2082,7 +2399,6 @@ def ClosePlugin():
         except:
             None
     del screens[:]
-
 
 def safeSignalConnect(sig, func):
     if hasattr(sig, "get"):
@@ -2113,6 +2429,37 @@ def safeSignalConnect(sig, func):
     print("[TheWeather] safeSignalConnect: GEEN methode werkte. beschikbare attributen:", dir(sig))
     return None
 
+def latlon_to_tile(lat, lon, zoom):
+    lat_rad = math.radians(lat)
+    n = 2.0 ** zoom
+    xtile = int((lon + 180.0) / 360.0 * n)
+    ytile = int((1.0 - math.log(math.tan(lat_rad) + (1 / math.cos(lat_rad))) / math.pi) / 2.0 * n)
+    return xtile, ytile
+
+
+def fetchRadarTest(lat, lon, zoom=7, outdir="/tmp"):
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36'}
+    xtile, ytile = latlon_to_tile(lat, lon, zoom)
+    print("[TheWeather] tile x=%s y=%s z=%s" % (xtile, ytile, zoom))
+
+    req = urllib2.Request("https://api.rainviewer.com/public/weather-maps.json", data=None, headers=headers)
+    handler = urllib2.urlopen(req, timeout=10)
+    meta = json.loads(handler.read())
+    lastFrame = meta["radar"]["past"][-1]["path"] 
+
+    osmUrl = "https://tile.openstreetmap.org/%s/%s/%s.png" % (zoom, xtile, ytile)
+    req = urllib2.Request(osmUrl, data=None, headers=headers)
+    handler = urllib2.urlopen(req, timeout=10)
+    with open(outdir + "/basemap_test.png", "wb") as f:
+        f.write(handler.read())
+
+    radarUrl = "https://tilecache.rainviewer.com%s/256/%s/%s/%s/2/1_1.png" % (lastFrame, zoom, xtile, ytile)
+    req = urllib2.Request(radarUrl, data=None, headers=headers)
+    handler = urllib2.urlopen(req, timeout=10)
+    with open(outdir + "/radar_test.png", "wb") as f:
+        f.write(handler.read())
+
+    print("[TheWeather] basemap_test.png en radar_test.png weggeschreven naar %s" % outdir)
 
 def safeTimerCallback(timer, func):
     if hasattr(timer, "callback"):
@@ -2171,8 +2518,329 @@ def main(session, **kwargs):
     else:
         session.open(MessageBox, _("Whoops!\nSlow or no Internet connection\nPlease try again"), MessageBox.TYPE_INFO)
 
+class TempOverlay(Screen):
+    def __init__(self, session):
+        ov_w, ov_h = 70, 40
+        cur_w = getDesktop(0).size().width()
+        print("[TheWeather] DEBUG __init__ cur_w=%s" % cur_w)
+        if not cur_w:
+            cur_w = sz_w or 1920
+        skin = """
+                <screen name="TempOverlay" position=\"""" + str(cur_w - ov_w - 15) + """,0" size=\"""" + str(ov_w) + "," + str(ov_h) + """" flags="wfNoBorder" backgroundColor="transparent">
+                <widget name="overlay_temp" position="0,0" size=\"""" + str(ov_w) + "," + str(ov_h) + """" valign="center" halign="center" zPosition="1" font="Regular;36" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                </screen>"""
+        Screen.__init__(self, session)
+        self.skin = skin
+        self["overlay_temp"] = Label("")
+        self.refreshTimer = eTimer()
+        self._refreshTimerConn = safeTimerCallback(self.refreshTimer, self.refresh)
+        self.refresh()
+        self.visTimer = eTimer()
+        self._visTimerConn = safeTimerCallback(self.visTimer, _overlayCheckVisibility)
+        self.visTimer.start(1000, False)
+
+    def refresh(self):
+        global lockaaleStad
+        try:
+            stad = lockaaleStad
+            if not stad:
+                locdirsave = CFG_DIR + "/TheWeather_last.cfg"
+                if os.path.exists(locdirsave):
+                    for line in open(locdirsave):
+                        stad = line.rstrip()
+            if stad and getLocWeer(stad):
+                _updateOverlayFromWeatherData()
+        except Exception as e:
+            print("[TheWeather] TempOverlay.refresh: fout:", e)
+        try:
+            self.refreshTimer.start(15 * 60 * 1000, True)
+        except Exception:
+            pass
+
+class RadarScreen(Screen):
+    GRID = 3
+    CELL_HD = 250 #radar size
+    CELL_SD = 165 #radar size
+    BASE_ZOOM_OVERRIDE = None  # radar zoom 7, 10, 12
+
+    def __init__(self, session, lat=51.05, lon=3.72, zoom=7):
+        Screen.__init__(self, session)
+        self.skinName = ["RadarScreen"]
+
+        baseWidgets = ""
+        overlayWidgets = ""
+        if sz_w > 1800:
+            cell = self.CELL_HD
+            x0, y0 = 959, 160 #radar pos
+            for row in range(self.GRID):
+                for col in range(self.GRID):
+                    px, py = x0 + col * cell, y0 + row * cell
+                    baseWidgets += '<widget name="radarBase_%s_%s" position="%s,%s" size="%s,%s" zPosition="1" transparent="1" alphatest="blend" scale="1"/>' % (row, col, px, py, cell, cell)
+                    overlayWidgets += '<widget name="radarOverlay_%s_%s" position="%s,%s" size="%s,%s" zPosition="2" transparent="1" alphatest="blend" scale="1"/>' % (row, col, px, py, cell, cell)
+            self.skin = """
+                <screen name="RadarScreen" position="center,center" size="1920,1080" flags="wfNoBorder" title="Rain radar">
+                """ + baseWidgets + overlayWidgets + """
+                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/borders/smallline3.png" position="0,112" size="1920,3" zPosition="1"/>
+                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/borders/smallline3.png" position="0,1010" size="1920,3" zPosition="1"/>
+                <widget source="global.CurrentTime" render="Label" position="1634,35" size="225,45" transparent="1" zPosition="3" font="Regular;36" foregroundColor="#00ffffff" backgroundColor="#00202020" valign="center" halign="right"><convert type="ClockToText">Format:%-H:%M</convert></widget>
+                <widget source="global.CurrentTime" render="Label" position="1409,74" size="450,37" transparent="1" zPosition="3" font="Regular;24" foregroundColor="#00ffffff" backgroundColor="#00202020" valign="center" halign="right"><convert type="ClockToText">Format:%a %d/%m/%y</convert></widget>
+                <widget source="session.VideoPicture" render="Pig" position="30,160" size="720,405" backgroundColor="#ff000000" zPosition="1"/>
+                <widget source="session.CurrentService" render="Label" position="30,125" size="720,36" zPosition="1" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" font="Regular;28" noWrap="1" valign="center" halign="center"><convert type="ServiceName">Name</convert></widget>
+                <widget name="attribution" position="10,990" size="600,25" font="Regular;16" transparent="1" foregroundColor="#00ffffff" backgroundColor="#00202020"/>
+                <widget name="lastUpdate" position="957,125" size="400,36" zPosition="1" font="Regular;28" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/red34.png" position="192,1022" size="34,34" alphatest="blend"/>
+                <widget name="key_red" position="242,1015" size="370,48" zPosition="1" font="Regular;40" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/yellow34.png" position="1200,1022" size="34,34" alphatest="blend"/>
+                <widget name="key_yellow" position="1250,1015" size="600,48" zPosition="1" font="Regular;40" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/blue34.png" position="1500,1022" size="34,34" alphatest="blend"/>
+                <widget name="key_blue" position="1550,1015" size="370,48" zPosition="1" font="Regular;40" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                </screen>"""
+        else:
+            cell = self.CELL_SD
+            x0, y0 = 639, 127 #radar pos
+            for row in range(self.GRID):
+                for col in range(self.GRID):
+                    px, py = x0 + col * cell, y0 + row * cell
+                    baseWidgets += '<widget name="radarBase_%s_%s" position="%s,%s" size="%s,%s" zPosition="1" transparent="1" alphatest="blend" scale="1"/>' % (row, col, px, py, cell, cell)
+                    overlayWidgets += '<widget name="radarOverlay_%s_%s" position="%s,%s" size="%s,%s" zPosition="2" transparent="1" alphatest="blend" scale="1"/>' % (row, col, px, py, cell, cell)
+            self.skin = """
+                <screen name="RadarScreen" position="center,center" size="1280,720" flags="wfNoBorder" title="Rain radar">
+                """ + baseWidgets + overlayWidgets + """
+                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/borders/smallline2.png" position="0,88" size="1280,2" zPosition="1"/>
+                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/borders/smallline2.png" position="0,648" size="1280,2" zPosition="1"/>
+                <widget source="global.CurrentTime" render="Label" position="1091,12" size="150,55" transparent="1" zPosition="1" font="Regular;24" foregroundColor="#00ffffff" backgroundColor="#00202020" valign="center" halign="right"><convert type="ClockToText">Format:%-H:%M</convert></widget>
+                <widget source="global.CurrentTime" render="Label" position="941,32" size="300,55" transparent="1" zPosition="1" font="Regular;16" foregroundColor="#00ffffff" backgroundColor="#00202020" valign="center" halign="right"><convert type="ClockToText">Format:%a %d/%m/%y</convert></widget>
+                <widget source="session.VideoPicture" render="Pig" position="85,120" size="417,243" backgroundColor="#ff000000" zPosition="1"/>
+                <widget source="session.CurrentService" render="Label" position="85,93" size="417,32" zPosition="1" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" font="Regular;28" noWrap="1" valign="center" halign="center"><convert type="ServiceName">Name</convert></widget>
+                <widget name="attribution" position="10,620" size="500,17" font="Regular;12" transparent="1" foregroundColor="#00ffffff" backgroundColor="#00202020"/>
+                <widget name="lastUpdate" position="638,103" size="400,25" font="Regular;16" transparent="1" foregroundColor="#00ffffff" backgroundColor="#00202020"/>
+                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/red26.png" position="145,663" size="26,26" alphatest="blend"/>
+                <widget name="key_red" position="185,663" size="220,32" zPosition="1" font="Regular;24" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/yellow26.png" position="700,663" size="26,26" alphatest="blend"/>
+                <widget name="key_yellow" position="735,663" size="280,32" zPosition="1" font="Regular;24" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/blue26.png" position="970,663" size="26,26" alphatest="blend"/>
+                <widget name="key_blue" position="1010,663" size="220,32" zPosition="1" font="Regular;24" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                </screen>"""
+
+        for row in range(self.GRID):
+            for col in range(self.GRID):
+                self["radarBase_%s_%s" % (row, col)] = Pixmap()
+                self["radarOverlay_%s_%s" % (row, col)] = Pixmap()
+
+        self["attribution"] = Label(_("Weather data by RainViewer"))
+        self["lastUpdate"] = Label("")
+        self["key_red"] = Label("Exit")
+        self["key_yellow"] = Label(_("Pause"))
+        self.ZOOM_LEVELS = [7, 10, 12]
+        self.zoomIndex = 2
+        self.BASE_ZOOM_OVERRIDE = self.ZOOM_LEVELS[self.zoomIndex]    
+        self["key_blue"] = Label(_("Map zoom: %s") % self.ZOOM_LEVELS[self.zoomIndex])
+        self["actions"] = ActionMap(["OkCancelActions", "ColorActions"], {
+            "cancel": self.close,
+            "red": self.close,
+            "yellow": self.togglePause,
+            "blue": self.cycleBaseZoom,
+        }, -1)
+
+        self.lat = lat
+        self.lon = lon
+        self.zoom = zoom
+        self.framePixmaps = []
+        self.currentFrameIndex = 0
+        self.animTimerStarted = False
+        self.paused = False
+        self.fetchBusy = False
+
+        self.refreshTimer = eTimer()
+        self._refreshTimerConn = safeTimerCallback(self.refreshTimer, self.startFetch)
+        self.refreshTimer.start(10 * 60 * 1000, False)
+
+        self.animTimer = eTimer()
+        self._animTimerConn = safeTimerCallback(self.animTimer, self.nextFrame)
+
+        self.loadDelayTimer = eTimer()
+        self._loadDelayTimerConn = safeTimerCallback(self.loadDelayTimer, self._doZoomFetch)
+
+        self.tmpDir = "/tmp/TheWeather"
+        if not os.path.exists(self.tmpDir):
+            os.makedirs(self.tmpDir)
+        self.onClose.append(self.cleanupFrames)
+
+        self.onLayoutFinish.append(self.startFetch)
+        
+    def cleanupFrames(self):
+        for f in os.listdir(self.tmpDir):
+            if f.startswith("theweather_frame"):
+                try:
+                    os.remove(os.path.join(self.tmpDir, f))
+                except Exception:
+                    pass
+       
+    def startFetch(self):
+        if self.fetchBusy:
+            print("[TheWeather] RadarScreen: fetch al bezig, genegeerd")
+            return
+        self.fetchBusy = True
+        try:
+            self.fetchTiles()
+        except Exception as e:
+            print("[TheWeather] RadarScreen fetch fout:", e)
+        finally:
+            self.fetchBusy = False
+
+    def cycleBaseZoom(self):
+        if self.fetchBusy:
+            self["key_blue"].setText(_("Please wait..."))
+            return
+        self.zoomIndex = (self.zoomIndex + 1) % len(self.ZOOM_LEVELS)
+        newZoom = self.ZOOM_LEVELS[self.zoomIndex]
+        self.BASE_ZOOM_OVERRIDE = None if newZoom == self.zoom else newZoom
+        self.pendingZoomLabel = newZoom
+        self.fetchBusy = True
+        self["key_blue"].setText(_("Loading..."))
+        self.loadDelayTimer.start(50, True)
+
+    def togglePause(self):
+        if self.paused:
+            self.animTimer.start(1600, False)  #picspeed radar
+            self["key_yellow"].setText(_("Pause"))
+        else:
+            self.animTimer.stop()
+            self["key_yellow"].setText(_("Play"))
+        self.paused = not self.paused
+    
+    def _doZoomFetch(self):
+        self.fetchBusy = False
+        self.startFetch()
+        self["key_blue"].setText(_("Map zoom: %s") % self.pendingZoomLabel)
+    
+    def cleanupTiles(self):
+        shutil.rmtree(self.tmpDir, ignore_errors=True)
+    
+    def fetchTiles(self):
+        braHeaders = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36'}
+        osmHeaders = {'User-Agent': 'TheWeather-Enigma2Plugin/1.0 (https://www.linuxsat-support.com/thread/150741-theweather-plugin-v3-x-py2-py3-deb-ipk/)'}
+
+        centerX, centerY = latlon_to_tile(self.lat, self.lon, self.zoom)
+        baseZoom = self.BASE_ZOOM_OVERRIDE if self.BASE_ZOOM_OVERRIDE else self.zoom
+        baseCenterX, baseCenterY = latlon_to_tile(self.lat, self.lon, baseZoom)
+
+        req = urllib2.Request("https://api.rainviewer.com/public/weather-maps.json", data=None, headers=braHeaders)
+        handler = urllib2.urlopen(req, timeout=10)
+        meta = json.loads(handler.read())
+        pastFrames = meta["radar"]["past"][-8:]
+        nowcastFrames = meta["radar"].get("nowcast", [])
+        print("[TheWeather] DEBUG nowcast frames:", len(nowcastFrames))
+        allFrames = pastFrames + nowcastFrames
+        self.frameTimes = [frame.get("time") for frame in allFrames]
+        self.frameIsForecast = [False] * len(pastFrames) + [True] * len(nowcastFrames)
+
+        for row in range(self.GRID):
+            for col in range(self.GRID):
+                tx = baseCenterX + (col - 1)
+                ty = baseCenterY + (row - 1)
+
+                osmUrl = "https://tile.openstreetmap.org/%s/%s/%s.png" % (baseZoom, tx, ty)
+                basePath = "%s/theweather_base_z%s_%s_%s.png" % (self.tmpDir, baseZoom, row, col)
+                try:
+                    req = urllib2.Request(osmUrl, data=None, headers=osmHeaders)
+                    handler = urllib2.urlopen(req, timeout=10)
+                    with open(basePath, "wb") as f:
+                        f.write(handler.read())
+                    pix = loadPNG(basePath)
+                    if pix is not None:
+                        self["radarBase_%s_%s" % (row, col)].instance.setPixmap(pix)
+                        self["radarBase_%s_%s" % (row, col)].show()
+                except Exception as e:
+                    print("[TheWeather] basetegel fout:", row, col, e)
+
+        newFramePixmaps = []
+        for i, frame in enumerate(allFrames):
+            cellPix = {}
+            if not os.path.exists("/tmp/TheWeather"):
+                os.makedirs("/tmp/TheWeather")
+            for row in range(self.GRID):
+                for col in range(self.GRID):
+                    tx = centerX + (col - 1)
+                    ty = centerY + (row - 1)
+                    radarUrl = "https://tilecache.rainviewer.com%s/256/%s/%s/%s/2/1_1.png" % (frame["path"], self.zoom, tx, ty)
+                    framePath = "%s/theweather_frame%s_%s_%s.png" % (self.tmpDir, i, row, col)
+                    try:
+                        req = urllib2.Request(radarUrl, data=None, headers=braHeaders)
+                        handler = urllib2.urlopen(req, timeout=10)
+                        with open(framePath, "wb") as f:
+                            f.write(handler.read())
+                        cellPix[(row, col)] = loadPNG(framePath)
+                    except Exception as e:
+                        print("[TheWeather] frame decode fout:", row, col, e)
+                        cellPix[(row, col)] = None
+            newFramePixmaps.append(cellPix)
+
+        self.framePixmaps = newFramePixmaps
+        self.startAnimation()
+
+    def close(self, *args):
+        self.refreshTimer.stop()
+        self.animTimer.stop()
+        Screen.close(self, *args)
+
+    def startAnimation(self):
+        if not self.framePixmaps:
+            return
+        if self.paused:
+            return
+        self.currentFrameIndex = 0
+        self.showFrame(self.currentFrameIndex)
+        if not self.animTimerStarted:
+            self.animTimerStarted = True
+            self.animTimer.start(1600, False) #picspeed radar
+
+    def showFrame(self, index):
+        try:
+            ts = self.frameTimes[index]
+            if ts is not None:
+                label = _("Forecast: ") if self.frameIsForecast[index] else _("Radar: ")
+                self["lastUpdate"].setText(label + time.strftime("%H:%M", time.localtime(ts)))
+        except Exception as e:
+            print("[TheWeather] showFrame tijd fout:", e)
+        cellPix = self.framePixmaps[index]
+        for (row, col), pix in cellPix.items():
+            if pix is not None:
+                self["radarOverlay_%s_%s" % (row, col)].instance.setPixmap(pix)
+                self["radarOverlay_%s_%s" % (row, col)].show()
+
+    def nextFrame(self):
+        if not self.framePixmaps:
+            return
+        self.currentFrameIndex = (self.currentFrameIndex + 1) % len(self.framePixmaps)
+        self.showFrame(self.currentFrameIndex)
+
+def autostart(reason, **kwargs):
+    global _overlayScreen, _overlayEnabled, _overlaySession
+    print("[TheWeather] autostart aangeroepen, reason=%s, session=%s" % (reason, kwargs.get("session")))
+    if reason == 0:
+        session = kwargs.get("session")
+        if session is None:
+            print("[TheWeather] autostart: geen session in kwargs, stoppen")
+            return
+        _overlaySession = session
+        try:
+            _overlayEnabled = _readOverlayConfig()
+            print("[TheWeather] autostart: _overlayEnabled=%s" % _overlayEnabled)
+            _overlayScreen = session.instantiateDialog(TempOverlay)
+            print("[TheWeather] autostart: _overlayScreen aangemaakt: %s" % _overlayScreen)
+            _overlayCheckVisibility()
+        except Exception as e:
+            print("[TheWeather] autostart: fout bij opzetten overlay:", e)
+    elif reason == 1:
+        print("[TheWeather] autostart: reason=1, opruimen /tmp/TheWeather")
+        shutil.rmtree("/tmp/TheWeather", ignore_errors=True)
+
 
 def Plugins(path, **kwargs):
-    return PluginDescriptor(name="TheWeather", description="WeatherInfo",
+    return [
+        PluginDescriptor(name="TheWeather", description="WeatherInfo",
                             icon="Images/weerinfo.png",
-                            where=[PluginDescriptor.WHERE_EXTENSIONSMENU, PluginDescriptor.WHERE_PLUGINMENU], fnc=main)
+                            where=[PluginDescriptor.WHERE_EXTENSIONSMENU, PluginDescriptor.WHERE_PLUGINMENU], fnc=main),
+        PluginDescriptor(where=PluginDescriptor.WHERE_SESSIONSTART, fnc=autostart),
+    ]

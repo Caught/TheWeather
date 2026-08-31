@@ -92,9 +92,6 @@ msgstr "Ψιλόβροχο"
 msgid "E"
 msgstr "Α"
 
-msgid "Enter cityname e.g. london or london_gb or london-2643743"
-msgstr "Εισαγάγετε το όνομα της πόλης π.χ. london ή london_gb ή london-2643743"
-
 msgid "Europe"
 msgstr "Ευρώπη"
 
@@ -151,23 +148,6 @@ msgstr "Τοποθεσία -"
 
 msgid "Location:"
 msgstr "Τοποθεσία:"
-
-msgid ""
-Manual adding Citynumbers:\n
-Go to www.bbc.com/weather\n
-Search city and find citycode in the internetlink.\n
-\n
-Go back to \Location +\" and add cityname-number e.g.\n"
-\Dusseldorf-2934246\" or \"Dusseld-2934246\"\n"
-Don't forget the \-\" sign."
-msgstr ""
-Χειροκίνητη προσθήκη κωδικών πόλεων:\n
-Επισκεφθείτε το www.bbc.com/weather\n
-Αναζητήστε την πόλη και βρείτε τον κωδικό πόλης στον σύνδεσμο.\n
-\n
-Επιστρέψτε στο \Τοποθεσία+\" και προσθέστε το όνομα-κωδικό π.χ.\n"
-\Dusseldorf-2934246\" ή \"Dusseld-2934246\".\n"
-Μην ξεχάσετε το σύμβολο \-\"."
 
 msgid "Mist radar"
 msgstr "Ραντάρ ομίχλης"
@@ -370,9 +350,20 @@ msgstr "Ωχ!\nΑργή ή καθόλου σύνδεση στο Διαδίκτυ
 msgid "Wind: "
 msgstr "Άνεμος: "
 
-msgid "Tip!\n"
-"Press the hidden Yellow button in the main menu to change the background.\n\n"
-"Press the hidden Green button in the main menu to change the hour interval."
-msgstr "Συμβουλή!\n"
-"Πατήστε το κρυφό κίτρινο κουμπί στο κύριο μενού για να αλλάξετε το φόντο.\n\n"
-"Πατήστε το κρυφό πράσινο κουμπί στο κύριο μενού για να αλλάξετε το ωριαίο διάστημα."
+msgid "Loading radar..."
+msgstr "Φόρτωση ραντάρ..."
+
+msgid "Please wait..."
+msgstr "Παρακαλώ περιμένετε..."
+
+msgid "Map zoom: %s"
+msgstr "Ζουμ χάρτη: %s"
+
+msgid "Tip!\nPress the hidden Yellow button in the main menu to open the RainRadar.\n\nPress the hidden Green button in the main menu to change the hour interval.\n\nPress the hidden Blue button in the main menu to compare two cities.\n\nPress OK here to toggle the temperature overlay: %s"
+msgstr "Συμβουλή!\nΠατήστε το κρυφό κίτρινο κουμπί στο κύριο μενού για να ανοίξετε το ραντάρ βροχής.\n\nΠατήστε το κρυφό πράσινο κουμπί στο κύριο μενού για να αλλάξετε το χρονικό διάστημα ωρών.\n\nΠατήστε το κρυφό μπλε κουμπί στο κύριο μενού για να συγκρίνετε δύο πόλεις.\n\nΠατήστε OK εδώ για εναλλαγή της επικάλυψης θερμοκρασίας: %s"
+
+msgid "ON"
+msgstr "ΕΝΕΡΓΟ"
+
+msgid "OFF"
+msgstr "ΑΝΕΝΕΡΓΟ"

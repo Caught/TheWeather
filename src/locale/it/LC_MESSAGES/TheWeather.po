@@ -90,9 +90,6 @@ msgstr "Pioviggine"
 msgid "E"
 msgstr "E"
 
-msgid "Enter cityname e.g. london or london_gb or london-2643743"
-msgstr "Inserire il nome della città. Es.: london o london_gb o london-2643743"
-
 msgid "Europe"
 msgstr "Europa"
 
@@ -149,23 +146,6 @@ msgstr "Località -"
 
 msgid "Location:"
 msgstr "Località:"
-
-msgid ""
-Manual adding Citynumbers:\n
-Go to www.bbc.com/weather\n
-Search city and find citycode in the internetlink.\n
-\n
-Go back to \Location +\" and add cityname-number e.g.\n"
-\Dusseldorf-2934246\" or \"Dusseld-2934246\"\n"
-Don't forget the \-\" sign."
-msgstr ""
-Aggiunta manuale dei codici città:\n
-Andare su www.bbc.com/weather\n
-Cercare la città e trovare il codice città nel link internet.\n
-\n
-Tornare a \Località +\" e aggiungere il nome-numero della città, ad es.\n"
-\Dusseldorf-2934246\" o \"Dusseld-2934246\".\n"
-Non dimenticare il segno \-\"."
 
 msgid "Mist radar"
 msgstr "Radar nebbia"
@@ -368,9 +348,20 @@ msgstr "Oops!\nConnessione Internet lenta o assente\nRiprova più tardi"
 msgid "Wind: "
 msgstr "Vento: "
 
-msgid "Tip!\n"
-"Press the hidden Yellow button in the main menu to change the background.\n\n"
-"Press the hidden Green button in the main menu to change the hour interval."
-msgstr "Suggerimento!\n"
-"Premi il tasto giallo nascosto nel menu principale per cambiare lo sfondo.\n\n"
-"Premi il tasto verde nascosto nel menu principale per cambiare l'intervallo orario."
+msgid "Loading radar..."
+msgstr "Caricamento radar..."
+
+msgid "Please wait..."
+msgstr "Attendere prego..."
+
+msgid "Map zoom: %s"
+msgstr "Zoom mappa: %s"
+
+msgid "Tip!\nPress the hidden Yellow button in the main menu to open the RainRadar.\n\nPress the hidden Green button in the main menu to change the hour interval.\n\nPress the hidden Blue button in the main menu to compare two cities.\n\nPress OK here to toggle the temperature overlay: %s"
+msgstr "Suggerimento!\nPremi il pulsante giallo nascosto nel menu principale per aprire il radar delle piogge.\n\nPremi il pulsante verde nascosto nel menu principale per cambiare l'intervallo orario.\n\nPremi il pulsante blu nascosto nel menu principale per confrontare due città.\n\nPremi OK qui per attivare/disattivare la sovrapposizione della temperatura: %s"
+
+msgid "ON"
+msgstr "ATTIVO"
+
+msgid "OFF"
+msgstr "DISATTIVO"

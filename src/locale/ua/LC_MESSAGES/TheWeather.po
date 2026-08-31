@@ -88,9 +88,6 @@ msgstr "Мряка"
 msgid "E"
 msgstr "Сх"
 
-msgid "Enter cityname e.g. london or london_gb or london-2643743"
-msgstr "Введіть назву міста, наприклад: london, london_gb або london-2643743"
-
 msgid "Europe"
 msgstr "Європа"
 
@@ -147,23 +144,6 @@ msgstr "Видалити локацію"
 
 msgid "Location:"
 msgstr "Локація:"
-
-msgid ""
-Manual adding Citynumbers:\n
-Go to www.bbc.com/weather\n
-Search city and find citycode in the internetlink.\n
-\n
-Go back to \Location +\" and add cityname-number e.g.\n"
-\Dusseldorf-2934246\" or \"Dusseld-2934246\"\n"
-Don't forget the \-\" sign."
-msgstr ""
-Ручне додавання коду міста:\n
-Перейдіть на сайт www.bbc.com/weather\n
-Знайдіть місто та подивіться його код у адресному рядку.\n
-\n
-Поверніться в меню \Додати локацию\" та введіть назву-код міста, наприклад:\n"
-\Dusseldorf-2934246\" або \"Dusseld-2934246\".\n"
-Не забудьте знак \-\"."
 
 msgid "Mist radar"
 msgstr "Radar туману"
@@ -366,9 +346,20 @@ msgstr "Упс!\nПовільне інтернет-з'єднання або йо
 msgid "Wind: "
 msgstr "Вітер: "
 
-msgid "Tip!\n"
-"Press the hidden Yellow button in the main menu to change the background.\n\n"
-"Press the hidden Green button in the main menu to change the hour interval."
-msgstr "Порада!\n"
-"Натисніть приховану жовту кнопку в головному меню, щоб змінити фон.\n\n"
-"Натисніть приховану зелену кнопку в головному меню, щоб змінити годинний інтервал."
+msgid "Loading radar..."
+msgstr "Завантаження радару..."
+
+msgid "Please wait..."
+msgstr "Будь ласка, зачекайте..."
+
+msgid "Map zoom: %s"
+msgstr "Масштаб карти: %s"
+
+msgid "Tip!\nPress the hidden Yellow button in the main menu to open the RainRadar.\n\nPress the hidden Green button in the main menu to change the hour interval.\n\nPress the hidden Blue button in the main menu to compare two cities.\n\nPress OK here to toggle the temperature overlay: %s"
+msgstr "Порада!\nНатисніть приховану жовту кнопку в головному меню, щоб відкрити радар опадів.\n\nНатисніть приховану зелену кнопку в головному меню, щоб змінити часовий інтервал.\n\nНатисніть приховану синю кнопку в головному меню, щоб порівняти два міста.\n\nНатисніть тут OK, щоб увімкнути/вимкнути накладання температури: %s"
+
+msgid "ON"
+msgstr "УВІМК"
+
+msgid "OFF"
+msgstr "ВИМК"

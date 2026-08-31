@@ -92,9 +92,6 @@ msgstr "Nieselregen"
 msgid "E"
 msgstr "O"
 
-msgid "Enter cityname e.g. london or london_gb or london-2643743"
-msgstr "Stadtname eingeben, z. B. london oder london_gb oder london-2643743"
-
 msgid "Europe"
 msgstr "Europa"
 
@@ -151,23 +148,6 @@ msgstr "Ort -"
 
 msgid "Location:"
 msgstr "Ort:"
-
-msgid ""
-Manual adding Citynumbers:\n
-Go to www.bbc.com/weather\n
-Search city and find citycode in the internetlink.\n
-\n
-Go back to \Location +\" and add cityname-number e.g.\n"
-\Dusseldorf-2934246\" or \"Dusseld-2934246\"\n"
-Don't forget the \-\" sign."
-msgstr ""
-Manuelles Hinzufügen van Stadtnummern:\n
-Gehen Sie zu www.bbc.com/weather\n
-Stadt suchen und Stadtcode im Internetlink finden.\n
-\n
-Gehen Sie zurück zu \Ort +\" und fügen Sie Stadtname-Nummer hinzu, z. B.\n"
-\Dusseldorf-2934246\" oder \"Dusseld-2934246\".\n"
-Vergessen Sie das \-\"-Zeichen nicht."
 
 msgid "Mist radar"
 msgstr "Nebelradar"
@@ -370,10 +350,21 @@ msgstr "Hoppla!\nLangsame oder keine Internetverbindung\nBitte versuchen Sie es 
 msgid "Wind: "
 msgstr "Wind: "
 
-msgid "Tip!\n"
-"Press the hidden Yellow button in the main menu to change the background.\n\n"
-"Press the hidden Green button in the main menu to change the hour interval."
-msgstr "Tipp!\n"
-"Drücken Sie die verborgene gelbe Taste im Hauptmenü, um den Hintergrund zu ändern.\n\n"
-"Drücken Sie die verborgene grüne Taste im Hauptmenü, um das Stundenintervall zu ändern."
+msgid "ON"
+msgstr "AN"
+
+msgid "OFF"
+msgstr "AUS"
+
+msgid "Loading radar..."
+msgstr "Radar wird geladen..."
+
+msgid "Please wait..."
+msgstr "Bitte warten..."
+
+msgid "Map zoom: %s"
+msgstr "Kartenzoom: %s"
+
+msgid "Tip!\nPress the hidden Yellow button in the main menu to open the RainRadar.\n\nPress the hidden Green button in the main menu to change the hour interval.\n\nPress the hidden Blue button in the main menu to compare two cities.\n\nPress OK here to toggle the temperature overlay: %s"
+msgstr "Tipp!\nDrücken Sie die versteckte gelbe Taste im Hauptmenü, um den Regenradar zu öffnen.\n\nDrücken Sie die versteckte grüne Taste im Hauptmenü, um das Stundenintervall zu ändern.\n\nDrücken Sie die versteckte blaue Taste im Hauptmenü, um zwei Städte zu vergleichen.\n\nDrücken Sie hier OK, um die Temperaturüberlagerung umzuschalten: %s"
 
