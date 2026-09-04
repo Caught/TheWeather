@@ -1,11 +1,13 @@
-#v.3.51
+#v.4.1
 import os
+import sys
 import time
 import json
 import math
 import shutil
 import gettext
 import datetime
+import threading
 from enigma import gRGB
 from enigma import eTimer
 from enigma import ePoint
@@ -15,6 +17,7 @@ from Components.Label import Label
 from time import strftime, localtime
 from Components.config import config
 from Screens.ChoiceBox import ChoiceBox
+from Tools.LoadPixmap import LoadPixmap
 from enigma import ePicLoad, getDesktop
 from Components.MenuList import MenuList
 from Components.Language import language
@@ -29,6 +32,8 @@ from Components.MultiContent import MultiContentEntryText
 from Components.ActionMap import ActionMap, HelpableActionMap
 from Tools.Directories import resolveFilename, SCOPE_CONFIG, SCOPE_PLUGINS, SCOPE_LANGUAGE
 from enigma import eListboxPythonMultiContent, loadPNG, gFont, RT_HALIGN_LEFT, RT_HALIGN_RIGHT, RT_HALIGN_CENTER
+
+print("[TheWeather] loadPNG doc: %r" % (loadPNG.__doc__,))
 
 # add Lululla
 PY3 = False
@@ -68,7 +73,7 @@ def getCoordsFromEntry(value):
             return None, None
     return None, None
 
-version = '3.51'
+version = '4.1'
 PluginLanguageDomain = "FileBrowser"
 PluginLanguagePath = "Extensions/TheWeather/locale/"
 OAWeather = resolveFilename(SCOPE_PLUGINS, "Extensions/{}".format('OAWeather'))
@@ -82,6 +87,18 @@ icoonpath = "Images"
 SHARED_PACK = "Images"
 backgroundpath = ""
 CFG_DIR = "/etc/enigma2/TheWeather"
+
+_weatherCache = {}
+_WEATHER_CACHE_TTL = 5 * 60  # 5 minuten
+
+def _weatherCacheGet(key):
+    item = _weatherCache.get(key)
+    if item and time.time() - item[0] < _WEATHER_CACHE_TTL:
+        return item[1]
+    return None
+
+def _weatherCachePut(key, data):
+    _weatherCache[key] = (time.time(), data)
 
 def _(txt):
     t = gettext.dgettext("TheWeather", txt)
@@ -105,6 +122,8 @@ _overlayEnabled = False
 _overlayInfoscreenOpen = False
 _overlaySession = None
 OVERLAY_CFG = CFG_DIR + "/TheWeather_overlay.cfg"
+RADAR_ZOOM_CFG = CFG_DIR + "/TheWeather_radarzoom.cfg"
+RADAR_ZOOM_LEVELS = list(range(5, 17))  # vrije keuze: zoom 5 t/m 16
 
 def _readOverlayConfig():
     try:
@@ -123,11 +142,11 @@ def _overlayCheckVisibility():
             try:
                 _overlayScreen.instance.move(ePoint(cur_w - 70 - 0, 0))
             except Exception as e:
-                print("[TheWeather] reposition fout:", e)
+                print("[TheWeather] reposition error:", e)
             try:
                 _overlayScreen.instance.setZPosition(1000)
             except Exception as e:
-                print("[TheWeather] setZPosition fout:", e)
+                print("[TheWeather] setZPosition error:", e)
         liveTv = False
         try:
             liveTv = InfoBar.instance is not None
@@ -145,7 +164,7 @@ def _overlayCheckVisibility():
                 if cd is not None and cd is not InfoBar.instance:
                     systemMenuOpen = True
         except Exception as e:
-            print("[TheWeather] systemMenuOpen check fout:", e)   
+            print("[TheWeather] systemMenuOpen check error:", e)   
 
         print("[TheWeather] DEBUG liveTv=%s topIsInfoscreen=%s anyPluginScreenOpen=%s systemMenuOpen=%s enabled=%s" % (liveTv, topIsInfoscreen, anyPluginScreenOpen, systemMenuOpen, _overlayEnabled))
         if _overlayEnabled and (topIsInfoscreen or (liveTv and not anyPluginScreenOpen and not systemMenuOpen)):
@@ -153,7 +172,7 @@ def _overlayCheckVisibility():
         else:
             _overlayScreen.hide()
     except Exception as e:
-        print("[TheWeather] _overlayCheckVisibility: fout:", e)
+        print("[TheWeather] _overlayCheckVisibility: error:", e)
 
 
 def _doIconpackRestart(session):
@@ -167,7 +186,7 @@ def _updateOverlayFromWeatherData():
         temp = weatherData["days"][0]["hours"][0]["temperature"]
         _overlayScreen["overlay_temp"].setText("%s\xb0C" % int(round(temp)))
     except Exception as e:
-        print("[TheWeather] _updateOverlayFromWeatherData: fout:", e)
+        print("[TheWeather] _updateOverlayFromWeatherData: error:", e)
 
 SavedLokaleWeer = []
 lockaaleStad = ""
@@ -185,6 +204,13 @@ def getLocWeer(iscity=None):
     try:
         citynumb = int(mydata.rsplit("-", 1)[1])
         
+        cached = _weatherCacheGet(citynumb)
+        if cached is not None:
+            weatherData = cached
+            citynamedisplay = str(mydata.rsplit("-", 1)[0])
+            _updateOverlayFromWeatherData()
+            return True
+        
         # add Lululla edit
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36'}
         cookie_jar = cookielib.CookieJar()
@@ -195,6 +221,7 @@ def getLocWeer(iscity=None):
         antw = handler.read()
         # add Lululla edit end
         weatherData = json.loads(antw)
+        _weatherCachePut(citynumb, weatherData)
         citynamedisplay = str(mydata.rsplit("-", 1)[0])
         _updateOverlayFromWeatherData()
         return True
@@ -284,9 +311,17 @@ def getLocWeerFor(inputCity):
             naam = staddata[entryselect]["name"] + "  " + staddata[entryselect]["countrycode"]
             return data, naam
         except Exception as e:
-            print("getLocWeerFor fout:", e)
+            print("getLocWeerFor error:", e)
             return None, None
 
+def safeLoadPNG(path):
+    if sys.version_info[0] < 3 and isinstance(path, unicode):
+        path = path.encode("utf-8")
+    try:
+        return loadPNG(path)
+    except Exception as e:
+        print("[TheWeather] safeLoadPNG error:", e)
+        return None
 
 def icontotext(icon):
     text = ""
@@ -845,7 +880,7 @@ class sevendays(Screen):
             alertKleur, alertTekst = localWeatherAlert(dataDagen[0])
         except Exception as e:
             alertKleur, alertTekst = "", ""
-            print("updateFrameselect: fout bij bepalen weeralarm:", e)
+            print("updateFrameselect: error determining weather alert:", e)
         if alertTekst:
             kleurwaarde = {
                 "yellow": gRGB(0xf2c200),
@@ -858,7 +893,7 @@ class sevendays(Screen):
                 if self["weatheralert1"].instance is not None:
                     self["weatheralert1"].instance.setForegroundColor(kleurwaarde)
             except Exception as e:
-                print("updateFrameselect: fout bij instellen weeralarm-kleur:", e)
+                print("updateFrameselect: error setting weather alert color:", e)
             try:
                 if sz_w > 1800:
                     iconpad = "/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/" + SHARED_PACK + "/alert/alert_" + alertKleur + ".png"
@@ -868,7 +903,7 @@ class sevendays(Screen):
                     self["weatheralerticon1"].instance.setPixmapFromFile(iconpad)
                     self["weatheralerticon1"].show()
             except Exception as e:
-                print("updateFrameselect: fout bij laden alert-icoon:", e)
+                print("updateFrameselect: error loading alert icon:", e)
                 self["weatheralerticon1"].hide()
             self["weatheralertbg1"].show()
         else:
@@ -909,12 +944,14 @@ class sevendays(Screen):
                 self["dayIcon" + str(self.selected) + str(perUurUpdate)].show()
                 self["vlakuur" + str(perUurUpdate)].show()
                 self["sunicon" + str(perUurUpdate)].show()
+                print("[TheWeather] DEBUG uur=%s iconcode=%s" % (slotHours[perUurUpdate].get("hour"), slotHours[perUurUpdate].get("iconcode")))
                 iconpath = "/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/" + icoonpath + "/iconhd/" + slotHours[perUurUpdate]["iconcode"] + ".png"
                                 
                 try:
-                    self["dayIcon" + str(self.selected) + str(perUurUpdate)].instance.setPixmap(loadPNG(iconpath))
-                except:
-                    pass
+                    self["dayIcon" + str(self.selected) + str(perUurUpdate)].instance.setPixmap(safeLoadPNG(iconpath))
+                except Exception as e:
+                    print("[TheWeather] DEBUG icon ERROR hour=%s iconpath=%s error=%s" % (slotHours[perUurUpdate].get("hour"), iconpath, e))
+                    
                 self["rainicon" + str(perUurUpdate)].show()
                 self["rhicon" + str(perUurUpdate)].show()
                 self["windicon" + str(perUurUpdate)].show()
@@ -992,7 +1029,7 @@ class sevendays(Screen):
                 self.picload.setPara([1280, 720, 1, 1, False, 1, "#ff000000"])
             self.picload.startDecode(bgfile)
         except Exception as e:
-            print("loadBackground: fout bij laden achtergrond:", e)
+            print("loadBackground: error loading background:", e)
 
     def bgPictureLoaded(self, picInfo=None):
         if not hasattr(self, 'picload') or self.picload is None:
@@ -1003,13 +1040,13 @@ class sevendays(Screen):
                 self["bgpic"].instance.setPixmap(ptr)
                 self["bgpic"].show()
         except Exception as e:
-            print("bgPictureLoaded: fout:", e)
+            print("bgPictureLoaded: error:", e)
 
     def openRadar(self):
-        global lockaaleStad
+        global lockaaleStad, citynamedisplay
         lat, lon = getCoordsFromEntry(lockaaleStad)
         if lat is not None and lon is not None:
-            self.session.open(RadarScreen, lat=lat, lon=lon, zoom=7) #map zoom
+            self.session.open(RadarScreen, lat=lat, lon=lon, zoom=7, cityname=citynamedisplay) #map zoom
         else:
             self.session.open(MessageBox, _("No radar coordinates for this location.\nRemove and re-add it via search to enable radar."), MessageBox.TYPE_INFO)
     
@@ -1452,9 +1489,9 @@ class CitySearchKeyBoard(VirtualKeyBoard):
             antw = handler.read()
             self.searchResults = json.loads(antw)
         except Exception as e:
-            print("[TheWeather] updateSuggestions fout:", e)
+            print("[TheWeather] updateSuggestions error:", e)
             self.searchResults = []
-        print("[TheWeather] DEBUG eerste zoekresultaat:", self.searchResults[0] if self.searchResults else "leeg")
+        print("[TheWeather] DEBUG first search result:", self.searchResults[0] if self.searchResults else "empty")
         names = [r.get("name", "") + " (" + r.get("countrycode", "") + ")" for r in self.searchResults[:6]]
         text = "\n".join(names)
         if not PY3 and isinstance(text, unicode):
@@ -1568,6 +1605,7 @@ class localcityscreen(Screen):
             lat, lon = getCoordsFromEntry(selecteddat)
             if lat is not None and lon is not None:
                 self.pendingRadarCoords = (lat, lon)
+                self.pendingRadarCity = selecteddat.rsplit("-", 1)[0]
                 self["helpinfo"].setText(_("Loading radar..."))
                 self.radarLoadTimer.start(50, True)
             else:
@@ -1575,8 +1613,8 @@ class localcityscreen(Screen):
 
     def _openRadarDeferred(self):
         lat, lon = self.pendingRadarCoords
-        self.session.openWithCallback(self._radarClosed, RadarScreen, lat=lat, lon=lon, zoom=7)
-
+        self.session.openWithCallback(self._radarClosed, RadarScreen, lat=lat, lon=lon, zoom=7, cityname=self.pendingRadarCity)
+    
     def _radarClosed(self, *args):
         self["helpinfo"].setText(self.helpInfoDefault)
 
@@ -1607,7 +1645,7 @@ class localcityscreen(Screen):
             antw = handler.read()
             results = json.loads(antw)
         except Exception as e:
-            print("[TheWeather] onCityTyped fout:", e)
+            print("[TheWeather] onCityTyped error:", e)
             results = []
         if not results:
             self.session.open(MessageBox, _("No matching cities found."), MessageBox.TYPE_INFO)
@@ -1781,7 +1819,8 @@ class infoscreen(Screen):
         self["key_green"] = Label(_("Standard Icons"))
         self["key_yellow"] = Label(_("Extra Icons "))
         self["key_blue"] = Label(_("Background"))
-        self["helpinfo"] = Label(_("Tip!\nPress the hidden Yellow button in the main menu to open the RainRadar.\n\nPress the hidden Green button in the main menu to change the hour interval.\n\nPress the hidden Blue button in the main menu to compare two cities.\n\nPress OK here to toggle the temperature overlay: %s") % (_("ON") if _overlayEnabled else _("OFF")))
+        
+        self["helpinfo"] = Label(_("Tip!\nPress the hidden Yellow button in the main menu to open the RainRadar.\n\nPress the hidden Green button in the main menu to change the hour interval.\n\nPress the hidden Blue button in the main menu to compare two cities.\n\nPress OK here to toggle the temperature overlay: %s") % (_("ON") if _overlayEnabled else _("OFF"),))
         self["actions"] = ActionMap(["WizardActions"], {"back": self.close, "ok": self.toggleOverlay}, -1)
         self["ColorActions"] = HelpableActionMap(self, "ColorActions", {"red": self.exit, "green": self.default, "yellow": self.extra, "blue": self.openBackgroundPicker}, -1)
         self["version"] = Label("TheWeather_v.%s" % version)
@@ -1807,9 +1846,9 @@ class infoscreen(Screen):
             with open(OVERLAY_CFG, "w") as f:
                 f.write("1" if _overlayEnabled else "0")
         except Exception as e:
-            print("[TheWeather] toggleOverlay: opslaan mislukt:", e)
+            print("[TheWeather] toggleOverlay: save failed:", e)
         _overlayCheckVisibility()
-        self["helpinfo"].setText(_("Tip!\nPress the hidden Yellow button in the main menu to open the RainRadar.\n\nPress the hidden Green button in the main menu to change the hour interval.\n\nPress the hidden Blue button in the main menu to compare two cities.\n\nPress OK here to toggle the temperature overlay: %s") % (_("ON") if _overlayEnabled else _("OFF")))
+        self["helpinfo"].setText(_("Tip!\nPress the hidden Yellow button in the main menu to open the RainRadar.\n\nPress the hidden Green button in the main menu to change the hour interval.\n\nPress the hidden Blue button in the main menu to compare two cities.\n\nPress OK here to toggle the temperature overlay: %s") % (_("ON") if _overlayEnabled else _("OFF"),))
 
     def default(self):
         self["helpinfo"].setText(_("Loading standard icons, please wait..."))
@@ -2052,7 +2091,7 @@ class twolocations(Screen):
         try:
             self[key].setText("" if value is None else str(value))
         except Exception as e:
-            print("twolocations _setText fout op", key, ":", e)
+            print("twolocations _setText error on", key, ":", e)
 
     def _fillLocation(self, data, naam, prefix):
         
@@ -2084,9 +2123,20 @@ class twolocations(Screen):
         except Exception:
             pass
 
+        #try:
+            #feeltemp = dag.get("feeltemperature", dag.get("maxtemperature", "--"))
+            #self._setText(prefix + "feel", _("Feels Like: ") + "%.0f\xb0C" % float(feeltemp))
+        #except Exception:
+            #pass
+
         try:
-            feeltemp = dag.get("feeltemperature", dag.get("maxtemperature", "--"))
-            self._setText(prefix + "feel", _("Feels like: ") + "%.0f\xb0C" % float(feeltemp))
+            hours = dag.get("hours", [])
+            if hours and "feeltemperature" in hours[0]:
+                feeltemp = hours[0]["feeltemperature"]
+            else:
+                feeltemp = dag.get("feeltemperature", dag.get("maxtemperature", "--"))
+            
+            self._setText(prefix + "feel", _("Feels Like: ") + "%.1f\xb0C" % float(feeltemp))
         except Exception:
             pass
 
@@ -2161,7 +2211,7 @@ class twolocations(Screen):
         try:
             self._fillLocation(weatherData, citynamedisplay, "loc1")
         except Exception as e:
-            print("twolocations fillLoc1 fout:", e)
+            print("twolocations fillLoc1 error:", e)
             self._setText("loc1name", _("Error loading"))
 
     def fillLoc2(self, city):
@@ -2175,7 +2225,7 @@ class twolocations(Screen):
                 self._setText("loc2name", _("Not found"))
                 self._setText("statusmsg", _("City not found. Press YELLOW to change."))
         except Exception as e:
-            print("twolocations fillLoc2 fout:", e)
+            print("twolocations fillLoc2 error:", e)
             self._setText("loc2name", _("Error loading"))
             self._setText("statusmsg", _("Error fetching data."))
 
@@ -2194,7 +2244,7 @@ class twolocations(Screen):
             with open(self.COMPARE_CFG, "w") as f:
                 f.write(self.compareCity)
         except Exception as e:
-            print("twolocations: opslaan 2e stad mislukt:", e)
+            print("twolocations: saving 2nd city failed:", e)
         self.fillLoc2(self.compareCity)
 
     def exit(self):
@@ -2337,7 +2387,7 @@ class BackgroundPickerScreen(Screen):
                 self["preview"].instance.setPixmap(ptr)
                 self["preview"].show()
         except Exception as e:
-            print("BackgroundPicker previewLoaded fout:", e)
+            print("BackgroundPicker previewLoaded error:", e)
 
     def _backToSevendays(self):
         for scr in list(screens):
@@ -2363,7 +2413,7 @@ class BackgroundPickerScreen(Screen):
             with open(self.BG_CFG, "w") as f:
                 f.write(pad)
         except Exception as e:
-            print("BackgroundPicker: opslaan mislukt:", e)
+            print("BackgroundPicker: save failed:", e)
         self._backToSevendays()
         self.session.open(MessageBox, _("Loading background image, please wait..."), MessageBox.TYPE_INFO, timeout=4)
         self.close(True)
@@ -2375,7 +2425,7 @@ class BackgroundPickerScreen(Screen):
             with open(self.BG_CFG, "w") as f:
                 f.write("")
         except Exception as e:
-            print("BackgroundPicker: reset mislukt:", e)
+            print("BackgroundPicker: reset failed:", e)
         self._backToSevendays()
         self.session.open(MessageBox, _("Background reset to standard."), MessageBox.TYPE_INFO, timeout=2)
         self.close(True)
@@ -2551,7 +2601,7 @@ class TempOverlay(Screen):
             if stad and getLocWeer(stad):
                 _updateOverlayFromWeatherData()
         except Exception as e:
-            print("[TheWeather] TempOverlay.refresh: fout:", e)
+            print("[TheWeather] TempOverlay.refresh: error:", e)
         try:
             self.refreshTimer.start(15 * 60 * 1000, True)
         except Exception:
@@ -2563,7 +2613,7 @@ class RadarScreen(Screen):
     CELL_SD = 165 #radar size
     BASE_ZOOM_OVERRIDE = None  # radar zoom 7, 10, 12
 
-    def __init__(self, session, lat=51.05, lon=3.72, zoom=7):
+    def __init__(self, session, lat=51.05, lon=3.72, zoom=7, cityname=""):
         Screen.__init__(self, session)
         self.skinName = ["RadarScreen"]
 
@@ -2580,6 +2630,8 @@ class RadarScreen(Screen):
             self.skin = """
                 <screen name="RadarScreen" position="center,center" size="1920,1080" flags="wfNoBorder" title="Rain radar">
                 """ + baseWidgets + overlayWidgets + """
+                <widget name="zoomList" position="1719,192" size="100,480" itemHeight="40" font="Regular;32" valign="center" scrollbarMode="showOnDemand" selectionPixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/list/list10024.png"/>\n
+                <widget name="zoomTitle" position="1719,157" size="190,36" zPosition="2" font="Regular;32" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1"/>
                 <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/borders/smallline3.png" position="0,112" size="1920,3" zPosition="1"/>
                 <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/borders/smallline3.png" position="0,1010" size="1920,3" zPosition="1"/>
                 <widget source="global.CurrentTime" render="Label" position="1634,35" size="225,45" transparent="1" zPosition="3" font="Regular;36" foregroundColor="#00ffffff" backgroundColor="#00202020" valign="center" halign="right"><convert type="ClockToText">Format:%-H:%M</convert></widget>
@@ -2587,7 +2639,8 @@ class RadarScreen(Screen):
                 <widget source="session.VideoPicture" render="Pig" position="30,160" size="720,405" backgroundColor="#ff000000" zPosition="1"/>
                 <widget source="session.CurrentService" render="Label" position="30,125" size="720,36" zPosition="1" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" font="Regular;28" noWrap="1" valign="center" halign="center"><convert type="ServiceName">Name</convert></widget>
                 <widget name="attribution" position="10,990" size="600,25" font="Regular;16" transparent="1" foregroundColor="#00ffffff" backgroundColor="#00202020"/>
-                <widget name="lastUpdate" position="957,125" size="400,36" zPosition="1" font="Regular;28" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget name="radar" position="969,168" size="500,42" valign="center" halign="left" zPosition="3" font="Regular;36" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget name="lastUpdate" position="959,920" size="400,36" zPosition="1" font="Regular;28" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
                 <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/red34.png" position="192,1022" size="34,34" alphatest="blend"/>
                 <widget name="key_red" position="242,1015" size="370,48" zPosition="1" font="Regular;40" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
                 <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/yellow34.png" position="1200,1022" size="34,34" alphatest="blend"/>
@@ -2606,6 +2659,8 @@ class RadarScreen(Screen):
             self.skin = """
                 <screen name="RadarScreen" position="center,center" size="1280,720" flags="wfNoBorder" title="Rain radar">
                 """ + baseWidgets + overlayWidgets + """
+                <widget name="zoomList" position="1140,151" size="66,336" itemHeight="28" font="Regular;24" valign="center" scrollbarMode="showOnDemand" selectionPixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/list/list6640.png"/>\n
+                <widget name="zoomTitle" position="1140,123" size="135,32" zPosition="2" font="Regular;24" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1"/>
                 <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/borders/smallline2.png" position="0,88" size="1280,2" zPosition="1"/>
                 <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/borders/smallline2.png" position="0,648" size="1280,2" zPosition="1"/>
                 <widget source="global.CurrentTime" render="Label" position="1091,12" size="150,55" transparent="1" zPosition="1" font="Regular;24" foregroundColor="#00ffffff" backgroundColor="#00202020" valign="center" halign="right"><convert type="ClockToText">Format:%-H:%M</convert></widget>
@@ -2613,7 +2668,8 @@ class RadarScreen(Screen):
                 <widget source="session.VideoPicture" render="Pig" position="85,120" size="417,243" backgroundColor="#ff000000" zPosition="1"/>
                 <widget source="session.CurrentService" render="Label" position="85,93" size="417,32" zPosition="1" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" font="Regular;28" noWrap="1" valign="center" halign="center"><convert type="ServiceName">Name</convert></widget>
                 <widget name="attribution" position="10,620" size="500,17" font="Regular;12" transparent="1" foregroundColor="#00ffffff" backgroundColor="#00202020"/>
-                <widget name="lastUpdate" position="638,103" size="400,25" font="Regular;16" transparent="1" foregroundColor="#00ffffff" backgroundColor="#00202020"/>
+                <widget name="radar" position="647,133" size="350,32" valign="center" halign="left" zPosition="3" font="Regular;24" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget name="lastUpdate" position="639,626" size="400,25" font="Regular;16" transparent="1" foregroundColor="#00ffffff" backgroundColor="#00202020"/>
                 <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/red26.png" position="145,663" size="26,26" alphatest="blend"/>
                 <widget name="key_red" position="185,663" size="220,32" zPosition="1" font="Regular;24" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
                 <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/yellow26.png" position="700,663" size="26,26" alphatest="blend"/>
@@ -2628,28 +2684,51 @@ class RadarScreen(Screen):
                 self["radarOverlay_%s_%s" % (row, col)] = Pixmap()
 
         self["attribution"] = Label(_("Weather data by RainViewer"))
+        self["radar"] = Label(cityname if cityname else _("Radar Screen"))
         self["lastUpdate"] = Label("")
         self["key_red"] = Label("Exit")
         self["key_yellow"] = Label(_("Pause"))
-        self.ZOOM_LEVELS = [7, 10, 12]
-        self.zoomIndex = 2
-        self.BASE_ZOOM_OVERRIDE = self.ZOOM_LEVELS[self.zoomIndex]    
+        self.ZOOM_LEVELS = RADAR_ZOOM_LEVELS
+        self.zoomIndex = self.ZOOM_LEVELS.index(14)
+        
+        if os.path.exists(RADAR_ZOOM_CFG):
+            try:
+                with open(RADAR_ZOOM_CFG) as f:
+                    savedZoom = int(f.read().strip())
+                if savedZoom in self.ZOOM_LEVELS:
+                    self.zoomIndex = self.ZOOM_LEVELS.index(savedZoom)
+            except Exception as e:
+                print("[TheWeather] radarzoom cfg read error:", e)
+        self.BASE_ZOOM_OVERRIDE = self.ZOOM_LEVELS[self.zoomIndex]
         self["key_blue"] = Label(_("Map zoom: %s") % self.ZOOM_LEVELS[self.zoomIndex])
-        self["actions"] = ActionMap(["OkCancelActions", "ColorActions"], {
+        self["zoomList"] = MenuList([str(z) for z in self.ZOOM_LEVELS])
+        self["zoomList"].moveToIndex(self.zoomIndex)
+        self["zoomTitle"] = Label(_("Zoom"))
+        self["actions"] = ActionMap(["OkCancelActions", "ColorActions", "DirectionActions"], {
             "cancel": self.close,
             "red": self.close,
             "yellow": self.togglePause,
-            "blue": self.cycleBaseZoom,
+            "up": self.zoomUp,
+            "down": self.zoomDown,
+            "ok": self.confirmZoom,
+            "blue": self.confirmZoom,
         }, -1)
 
         self.lat = lat
         self.lon = lon
         self.zoom = zoom
-        self.framePixmaps = []
+        self.frameFiles = []
         self.currentFrameIndex = 0
         self.animTimerStarted = False
         self.paused = False
+        self.overlayShown = False
         self.fetchBusy = False
+        self._radarThread = None
+        self._radarResult = None
+        self._radarError = None
+        self._radarPollTimer = None
+        self._radarPollTimerConn = None
+        self._closed = False
 
         self.refreshTimer = eTimer()
         self._refreshTimerConn = safeTimerCallback(self.refreshTimer, self.startFetch)
@@ -2677,27 +2756,55 @@ class RadarScreen(Screen):
                     pass
        
     def startFetch(self):
-        if self.fetchBusy:
-            print("[TheWeather] RadarScreen: fetch al bezig, genegeerd")
+        if self.fetchBusy or self._closed:
             return
         self.fetchBusy = True
-        try:
-            self.fetchTiles()
-        except Exception as e:
-            print("[TheWeather] RadarScreen fetch fout:", e)
-        finally:
-            self.fetchBusy = False
+        self.animTimer.stop()
+        self.animTimerStarted = False
+        self["lastUpdate"].setText(_("Loading radar..."))
+        self._radarResult = None
+        self._radarError = None
+        self._radarThread = threading.Thread(target=self._fetchTilesWorker)
+        self._radarThread.daemon = True
+        self._radarThread.start()
+        if self._radarPollTimer is None:
+            self._radarPollTimer = eTimer()
+            self._radarPollTimerConn = safeTimerCallback(self._radarPollTimer, self._pollRadarWorker)
+        self._radarPollTimer.start(200, False) 
 
-    def cycleBaseZoom(self):
+    def _currentZoomIndex(self):
+        try:
+            current = self["zoomList"].getCurrent()
+            return self.ZOOM_LEVELS.index(int(current))
+        except Exception:
+            return self.zoomIndex
+
+    def zoomUp(self):
+        self["zoomList"].up()
+        idx = self._currentZoomIndex()
+        self["key_blue"].setText(_("Map zoom: %s") % self.ZOOM_LEVELS[idx])
+
+    def zoomDown(self):
+        self["zoomList"].down()
+        idx = self._currentZoomIndex()
+        self["key_blue"].setText(_("Map zoom: %s") % self.ZOOM_LEVELS[idx])
+
+    def confirmZoom(self):
         if self.fetchBusy:
             self["key_blue"].setText(_("Please wait..."))
             return
-        self.zoomIndex = (self.zoomIndex + 1) % len(self.ZOOM_LEVELS)
-        newZoom = self.ZOOM_LEVELS[self.zoomIndex]
+        idx = self._currentZoomIndex()
+        newZoom = self.ZOOM_LEVELS[idx]
+        self.zoomIndex = idx
         self.BASE_ZOOM_OVERRIDE = None if newZoom == self.zoom else newZoom
         self.pendingZoomLabel = newZoom
         self.fetchBusy = True
         self["key_blue"].setText(_("Loading..."))
+        try:
+            with open(RADAR_ZOOM_CFG, "w") as f:
+                f.write(str(newZoom))
+        except Exception as e:
+            print("[TheWeather] radarzoom cfg write error:", e)
         self.loadDelayTimer.start(50, True)
 
     def togglePause(self):
@@ -2717,75 +2824,122 @@ class RadarScreen(Screen):
     def cleanupTiles(self):
         shutil.rmtree(self.tmpDir, ignore_errors=True)
     
-    def fetchTiles(self):
-        braHeaders = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36'}
-        osmHeaders = {'User-Agent': 'TheWeather-Enigma2Plugin/1.0 (https://www.linuxsat-support.com/thread/150741-theweather-plugin-v3-x-py2-py3-deb-ipk/)'}
+    def _fetchTilesWorker(self):
+        """Draait in een achtergrondthread: enkel downloaden, geen widgets aanraken."""
+        try:
+            braHeaders = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36'}
+            osmHeaders = {'User-Agent': 'TheWeather-Enigma2Plugin/1.0 (https://www.linuxsat-support.com/thread/150741-theweather-plugin-v3-x-py2-py3-deb-ipk/)'}
 
-        centerX, centerY = latlon_to_tile(self.lat, self.lon, self.zoom)
-        baseZoom = self.BASE_ZOOM_OVERRIDE if self.BASE_ZOOM_OVERRIDE else self.zoom
-        baseCenterX, baseCenterY = latlon_to_tile(self.lat, self.lon, baseZoom)
+            centerX, centerY = latlon_to_tile(self.lat, self.lon, self.zoom)
+            baseZoom = self.BASE_ZOOM_OVERRIDE if self.BASE_ZOOM_OVERRIDE else self.zoom
+            baseCenterX, baseCenterY = latlon_to_tile(self.lat, self.lon, baseZoom)
 
-        req = urllib2.Request("https://api.rainviewer.com/public/weather-maps.json", data=None, headers=braHeaders)
-        handler = urllib2.urlopen(req, timeout=10)
-        meta = json.loads(handler.read())
-        pastFrames = meta["radar"]["past"][-8:]
-        nowcastFrames = meta["radar"].get("nowcast", [])
-        print("[TheWeather] DEBUG nowcast frames:", len(nowcastFrames))
-        allFrames = pastFrames + nowcastFrames
-        self.frameTimes = [frame.get("time") for frame in allFrames]
-        self.frameIsForecast = [False] * len(pastFrames) + [True] * len(nowcastFrames)
+            req = urllib2.Request("https://api.rainviewer.com/public/weather-maps.json", data=None, headers=braHeaders)
+            handler = urllib2.urlopen(req, timeout=10)
+            meta = json.loads(handler.read())
+            pastFrames = meta["radar"]["past"][-8:]
+            nowcastFrames = meta["radar"].get("nowcast", [])
+            allFrames = pastFrames + nowcastFrames
+            frameTimes = [frame.get("time") for frame in allFrames]
+            frameIsForecast = [False] * len(pastFrames) + [True] * len(nowcastFrames)
 
-        for row in range(self.GRID):
-            for col in range(self.GRID):
-                tx = baseCenterX + (col - 1)
-                ty = baseCenterY + (row - 1)
+            if not os.path.exists(self.tmpDir):
+                os.makedirs(self.tmpDir)
 
-                osmUrl = "https://tile.openstreetmap.org/%s/%s/%s.png" % (baseZoom, tx, ty)
-                basePath = "%s/theweather_base_z%s_%s_%s.png" % (self.tmpDir, baseZoom, row, col)
-                try:
-                    req = urllib2.Request(osmUrl, data=None, headers=osmHeaders)
-                    handler = urllib2.urlopen(req, timeout=10)
-                    with open(basePath, "wb") as f:
-                        f.write(handler.read())
-                    pix = loadPNG(basePath)
-                    if pix is not None:
-                        self["radarBase_%s_%s" % (row, col)].instance.setPixmap(pix)
-                        self["radarBase_%s_%s" % (row, col)].show()
-                except Exception as e:
-                    print("[TheWeather] basetegel fout:", row, col, e)
-
-        newFramePixmaps = []
-        for i, frame in enumerate(allFrames):
-            cellPix = {}
-            if not os.path.exists("/tmp/TheWeather"):
-                os.makedirs("/tmp/TheWeather")
+            baseFiles = {}
             for row in range(self.GRID):
                 for col in range(self.GRID):
-                    tx = centerX + (col - 1)
-                    ty = centerY + (row - 1)
-                    radarUrl = "https://tilecache.rainviewer.com%s/256/%s/%s/%s/2/1_1.png" % (frame["path"], self.zoom, tx, ty)
-                    framePath = "%s/theweather_frame%s_%s_%s.png" % (self.tmpDir, i, row, col)
+                    tx = baseCenterX + (col - 1)
+                    ty = baseCenterY + (row - 1)
+                    osmUrl = "https://tile.openstreetmap.org/%s/%s/%s.png" % (baseZoom, tx, ty)
+                    basePath = "%s/theweather_base_z%s_%s_%s.png" % (self.tmpDir, baseZoom, row, col)
                     try:
-                        req = urllib2.Request(radarUrl, data=None, headers=braHeaders)
+                        req = urllib2.Request(osmUrl, data=None, headers=osmHeaders)
                         handler = urllib2.urlopen(req, timeout=10)
-                        with open(framePath, "wb") as f:
+                        with open(basePath, "wb") as f:
                             f.write(handler.read())
-                        cellPix[(row, col)] = loadPNG(framePath)
+                        baseFiles[(row, col)] = basePath
                     except Exception as e:
-                        print("[TheWeather] frame decode fout:", row, col, e)
-                        cellPix[(row, col)] = None
-            newFramePixmaps.append(cellPix)
+                        print("[TheWeather] base tile error:", row, col, e)
 
-        self.framePixmaps = newFramePixmaps
-        self.startAnimation()
+            frameFiles = []
+            for i, frame in enumerate(allFrames):
+                cellFiles = {}
+                for row in range(self.GRID):
+                    for col in range(self.GRID):
+                        tx = centerX + (col - 1)
+                        ty = centerY + (row - 1)
+                        radarUrl = "https://tilecache.rainviewer.com%s/256/%s/%s/%s/2/1_1.png" % (frame["path"], self.zoom, tx, ty)
+                        framePath = "%s/theweather_frame%s_%s_%s.png" % (self.tmpDir, i, row, col)
+                        try:
+                            req = urllib2.Request(radarUrl, data=None, headers=braHeaders)
+                            handler = urllib2.urlopen(req, timeout=10)
+                            with open(framePath, "wb") as f:
+                                f.write(handler.read())
+                            cellFiles[(row, col)] = framePath
+                        except Exception as e:
+                            print("[TheWeather] frame download fout:", row, col, e)
+                            cellFiles[(row, col)] = None
+                mislukt = sum(1 for v in cellFiles.values() if v is None)
+                if mislukt > 0:
+                    print("[TheWeather] DEBUG frame %s (%s): %s/9 tegels mislukt" % (i, "forecast" if frameIsForecast[i] else "past", mislukt))
+                frameFiles.append(cellFiles)
 
+            self._radarResult = {
+                "baseFiles": baseFiles,
+                "frameFiles": frameFiles,
+                "frameTimes": frameTimes,
+                "frameIsForecast": frameIsForecast,
+            }
+        except Exception as e:
+            self._radarError = e
+            print("[TheWeather] RadarScreen worker error:", e)
+
+    def _pollRadarWorker(self):
+        if self._closed:
+            return
+        if self._radarResult is None and self._radarError is None:
+            return  # timer blijft elke 200ms checken tot een van beide gezet is
+
+        self._radarPollTimer.stop()
+
+        if self._radarError is not None:
+            self.fetchBusy = False
+            self["lastUpdate"].setText(_("Radar niet beschikbaar"))
+            self["key_blue"].setText(_("Map zoom: %s") % self.ZOOM_LEVELS[self.zoomIndex])
+            self._radarError = None
+            return
+
+        result = self._radarResult
+        self._radarResult = None
+        try:
+            for (row, col), path in result["baseFiles"].items():
+                pix = safeLoadPNG(path)
+                if pix is not None:
+                    self["radarBase_%s_%s" % (row, col)].instance.setPixmap(pix)
+                    self["radarBase_%s_%s" % (row, col)].show()
+
+            self.frameFiles = result["frameFiles"]
+            self.frameTimes = result["frameTimes"]
+            self.frameIsForecast = result["frameIsForecast"]
+            self.fetchBusy = False
+            self["key_blue"].setText(_("Map zoom: %s") % self.ZOOM_LEVELS[self.zoomIndex])
+            self.startAnimation()
+        except Exception as e:
+            self.fetchBusy = False
+            self["key_blue"].setText(_("Map zoom: %s") % self.ZOOM_LEVELS[self.zoomIndex])
+            print("[TheWeather] RadarScreen render error:", e)
+    
     def close(self, *args):
+        self._closed = True
         self.refreshTimer.stop()
         self.animTimer.stop()
+        if self._radarPollTimer is not None:
+            self._radarPollTimer.stop()
         Screen.close(self, *args)
 
     def startAnimation(self):
-        if not self.framePixmaps:
+        if not self.frameFiles:
             return
         if self.paused:
             return
@@ -2802,17 +2956,22 @@ class RadarScreen(Screen):
                 label = _("Forecast: ") if self.frameIsForecast[index] else _("Radar: ")
                 self["lastUpdate"].setText(label + time.strftime("%H:%M", time.localtime(ts)))
         except Exception as e:
-            print("[TheWeather] showFrame tijd fout:", e)
-        cellPix = self.framePixmaps[index]
-        for (row, col), pix in cellPix.items():
-            if pix is not None:
-                self["radarOverlay_%s_%s" % (row, col)].instance.setPixmap(pix)
-                self["radarOverlay_%s_%s" % (row, col)].show()
+            print("[TheWeather] showFrame time error:", e)
+        cellFiles = self.frameFiles[index]
+        for (row, col), path in cellFiles.items():
+            if path:
+                pix = safeLoadPNG(path)
+                if pix is not None:
+                    widget = self["radarOverlay_%s_%s" % (row, col)]
+                    widget.instance.setPixmap(pix)
+                    if not self.overlayShown:
+                        widget.show()
+        self.overlayShown = True
 
     def nextFrame(self):
-        if not self.framePixmaps:
+        if not self.frameFiles:
             return
-        self.currentFrameIndex = (self.currentFrameIndex + 1) % len(self.framePixmaps)
+        self.currentFrameIndex = (self.currentFrameIndex + 1) % len(self.frameFiles)
         self.showFrame(self.currentFrameIndex)
 
 def autostart(reason, **kwargs):
@@ -2831,7 +2990,7 @@ def autostart(reason, **kwargs):
             print("[TheWeather] autostart: _overlayScreen aangemaakt: %s" % _overlayScreen)
             _overlayCheckVisibility()
         except Exception as e:
-            print("[TheWeather] autostart: fout bij opzetten overlay:", e)
+            print("[TheWeather] autostart: error setting up overlay:", e)
     elif reason == 1:
         print("[TheWeather] autostart: reason=1, opruimen /tmp/TheWeather")
         shutil.rmtree("/tmp/TheWeather", ignore_errors=True)

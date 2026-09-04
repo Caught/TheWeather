@@ -3,7 +3,7 @@ set -e
 
 REPO="Caught/TheWeather"
 NAME="theweather"
-VERSION="3.51"
+VERSION="4.1"
 
 if command -v dpkg >/dev/null 2>&1; then
     PKG="enigma2-plugin-extensions-${NAME}_${VERSION}_all.deb"
@@ -16,7 +16,7 @@ elif command -v opkg >/dev/null 2>&1; then
     URL="https://raw.githubusercontent.com/${REPO}/main/ipk/${PKG}"
     echo "Downloading $PKG ..."
     wget -q -O "/tmp/${PKG}" "$URL"
-    opkg install "/tmp/${PKG}"
+    opkg install --force-reinstall --force-downgrade --force-overwrite "/tmp/${PKG}"
 else
     echo "Geen opkg of dpkg gevonden — kan niet installeren."
     exit 1

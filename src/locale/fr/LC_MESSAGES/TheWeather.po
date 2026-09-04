@@ -1,21 +1,17 @@
 msgid ""
 msgstr ""
-"Project-Id-Version: Meteo\n"
+"Project-Id-Version: TheWeather\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2021-11-07 13:57+0200\n"
-"PO-Revision-Date: \n"
+"POT-Creation-Date: 2019-02-23 16:09+0200\n"
+"PO-Revision-Date: 2026-09-04 18:00+0200\n"
 "Last-Translator: \n"
 "Language-Team: \n"
-"Language: fr_BE\n"
+"Language: fr\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n > 1);\n"
-"X-Poedit-KeywordsList: _;gettext;gettext_noop\n"
-"X-Poedit-Basepath: ../../..\n"
-"X-Poedit-SourceCharset: UTF-8\n"
-"X-Generator: Poedit 1.8.6\n"
-"X-Poedit-SearchPath-0: .\n"
+"X-Generator: Poedit 3.0\n"
 
 msgid "Mo"
 msgstr "Lu"
@@ -63,34 +59,37 @@ msgid "Belgium"
 msgstr "Belgique"
 
 msgid "Changeable and chance of mist"
-msgstr "Variable, risque de brume"
+msgstr "Variable avec risque de brume"
 
 msgid "Changeable cloudy light snowfall"
-msgstr "Variable/Nuageux, légères chutes de neige"
+msgstr "Nuageux avec légères chutes de neige"
 
 msgid "Clear and chance of mist"
-msgstr "Dégagé, risque de brume"
+msgstr "Dégagé avec risque de brume"
 
 msgid "Clear night"
 msgstr "Nuit claire"
 
 msgid "Clouds radar"
-msgstr "Radar de nuages"
+msgstr "Radar nuages"
 
 msgid "Cloudy"
 msgstr "Nuageux"
 
 msgid "Cloudy and chance of showers"
-msgstr "Nuageux, risque d'averses"
+msgstr "Nuageux avec risque d'averses"
 
 msgid "Download error: Check spelling."
-msgstr "Erreur de téléchargement : Vérifiez l'orthographe."
+msgstr "Erreur de téléchargement: Vérifier l'orthographe."
 
 msgid "Drizzle"
 msgstr "Bruine"
 
 msgid "E"
 msgstr "E"
+
+msgid "Enter cityname e.g. london or london_gb or london-2643743"
+msgstr "Entrez la ville, ex. london, london_gb ou london-2643743"
 
 msgid "Europe"
 msgstr "Europe"
@@ -102,31 +101,31 @@ msgid "Favorite Locations"
 msgstr "Lieux favoris"
 
 msgid "Feels Like: "
-msgstr "Ressenti : "
+msgstr "Ressenti: "
 
 msgid "Hail radar"
-msgstr "Radar de grêle"
+msgstr "Radar grêle"
 
 msgid "Heavy clouds"
-msgstr "Fortement nuageux"
+msgstr "Très nuageux"
 
 msgid "Heavy clouds  heavy showers"
-msgstr "Fortement nuageux, fortes averses"
+msgstr "Très nuageux  fortes averses"
 
 msgid "Heavy clouds  thundershowers"
-msgstr "Fortement nuageux, orages"
+msgstr "Très nuageux  orages"
 
 msgid "Heavy clouds and heavy snowfall"
-msgstr "Fortement nuageux, fortes chutes de neige"
+msgstr "Très nuageux et fortes chutes de neige"
 
 msgid "Heavy clouds light snowfall"
-msgstr "Fortement nuageux, légères chutes de neige"
+msgstr "Très nuageux avec légère neige"
 
 msgid "Heavy clouds showers possible"
-msgstr "Fortement nuageux, averses possibles"
+msgstr "Très nuageux  averses possibles"
 
 msgid "Heavy clouds winter rainfall"
-msgstr "Fortement nuageux, pluie hivernale"
+msgstr "Très nuageux  pluies verglaçantes"
 
 msgid "Help"
 msgstr "Aide"
@@ -141,22 +140,39 @@ msgid "Local Weather"
 msgstr "Météo locale"
 
 msgid "Location +"
-msgstr "Ajouter un lieu"
+msgstr "Lieu +"
 
 msgid "Location -"
-msgstr "Supprimer un lieu"
+msgstr "Lieu -"
 
 msgid "Location:"
-msgstr "Lieu :"
+msgstr "Lieu:"
+
+msgid ""
+"Manual adding Citynumbers:\n"
+"Go to www.bbc.com/weather\n"
+"Search city and find citycode in the internetlink.\n"
+"\n"
+"Go back to \"Location +\" and add cityname-number e.g.\n"
+"\"Dusseldorf-2934246\" or \"Dusseld-2934246\"\n"
+"Don't forget the \"-\" sign."
+msgstr ""
+"Ajout manuel de la ville:\n"
+"Allez sur www.bbc.com/weather\n"
+"Cherchez la ville et trouvez le code dans le lien.\n"
+"\n"
+"Revenez à \"Lieu +\" et ajoutez nomville-numéro ex.\n"
+"\"Dusseldorf-2934246\" ou \"Dusseld-2934246\"\n"
+"N'oubliez pas le signe \"-\"."
 
 msgid "Mist radar"
-msgstr "Radar de brume"
+msgstr "Radar brume"
 
 msgid "Mostly clear"
-msgstr "Prév. dégagé"
+msgstr "Généralement dégagé"
 
 msgid "Mostly sunny"
-msgstr "Prév. ensoleillé"
+msgstr "Généralement ensoleillé"
 
 msgid "N"
 msgstr "N"
@@ -170,8 +186,8 @@ msgstr "NO"
 msgid "Rainfall radar"
 msgstr "Radar de pluie"
 
-msgid "WeatherInfo"
-msgstr "InfoMétéo"
+msgid "RainfallRadar & WeatherInfo"
+msgstr "Radar de pluie & Météo"
 
 msgid "S"
 msgstr "S"
@@ -189,25 +205,25 @@ msgid "Showers and chance of thunder"
 msgstr "Averses et risque d'orage"
 
 msgid "Snow radar"
-msgstr "Radar de neige"
+msgstr "Radar neige"
 
 msgid "Sun radar"
-msgstr "Radar de soleil"
+msgstr "Radar soleil"
 
 msgid "Sunny / Clear"
 msgstr "Ensoleillé / Dégagé"
 
 msgid "Sunny and chance of mist"
-msgstr "Ensoleillé, risque de brume"
+msgstr "Ensoleillé avec risque de brume"
 
 msgid "Sunny and chance of showers"
-msgstr "Ensoleillé, risque d'averses"
+msgstr "Ensoleillé avec risque d'averses"
 
 msgid "Sunny and chance of thundershowers"
-msgstr "Ensoleillé, risque d'orages"
+msgstr "Ensoleillé avec risque d'orages"
 
 msgid "Sunny few clouds"
-msgstr "Ensoleillé, quelques nuages"
+msgstr "Ensoleillé avec quelques nuages"
 
 msgid "Sunpower-UV"
 msgstr "Indice UV"
@@ -222,7 +238,7 @@ msgid "TheWeather"
 msgstr "LaMétéo"
 
 msgid "Thunder radar"
-msgstr "Radar d'orages"
+msgstr "Radar orages"
 
 msgid "W"
 msgstr "O"
@@ -231,7 +247,7 @@ msgid "Weather forecast-nl"
 msgstr "Prévisions météo"
 
 msgid "Wind direction: "
-msgstr "Direction du vent : "
+msgstr "Direction du vent: "
 
 msgid "Back"
 msgstr "Retour"
@@ -243,13 +259,13 @@ msgid "Background reset to standard."
 msgstr "Arrière-plan réinitialisé par défaut."
 
 msgid "Choose 2nd location"
-msgstr "Choisir un 2e lieu"
+msgstr "Choisir 2ème lieu"
 
 msgid "Choose 2nd location:"
-msgstr "Choisir un 2e lieu :"
+msgstr "Choisir 2ème lieu:"
 
 msgid "Choose background:"
-msgstr "Choisir l'arrière-plan :"
+msgstr "Choisir l'arrière-plan:"
 
 msgid "City not found. Press YELLOW to change."
 msgstr "Ville non trouvée. Appuyez sur JAUNE pour modifier."
@@ -261,7 +277,7 @@ msgid "Data error"
 msgstr "Erreur de données"
 
 msgid "Download error: No response try again"
-msgstr "Erreur de téléchargement : Pas de réponse, réessayez"
+msgstr "Erreur de téléchargement: Pas de réponse, réessayez"
 
 msgid "Error fetching data."
 msgstr "Erreur lors de la récupération des données."
@@ -270,57 +286,49 @@ msgid "Error loading"
 msgstr "Erreur de chargement"
 
 msgid "Extra Icons "
-msgstr "Icônes supplémentaires "
+msgstr "Icônes extra "
 
 msgid "Extreme cold!"
-msgstr "Froid extrême !"
+msgstr "Froid extrême!"
 
 msgid "Extreme heat!"
-msgstr "Chaleur extrême !"
+msgstr "Chaleur extrême!"
 
 msgid "h"
 msgstr "h"
 
 msgid "Heavy rain!"
-msgstr "Forte pluie !"
+msgstr "Forte pluie!"
 
 msgid "Heavy storm!"
-msgstr "Forte tempête !"
+msgstr "Tempête violente!"
 
-msgid ""
-"Icon pack changed.\n"
-"The plugin will restart..."
-msgstr ""
-"Pack d'icônes modifié.\n"
-"Le plugin va redémarrer..."
+msgid "Icon pack changed.\nThe plugin will restart..."
+msgstr "Pack d'icônes modifié.\nLe plugin va redémarrer..."
 
 msgid "Loading background image, please wait..."
-msgstr "Chargement de l'image de fond, veuillez patienter..."
+msgstr "Chargement de l'arrière-plan, patientez..."
 
 msgid "Loading..."
 msgstr "Chargement..."
 
 msgid "No 2nd location"
-msgstr "Pas de 2e lieu"
+msgstr "Pas de 2ème lieu"
 
 msgid "No info"
-msgstr "Pas d'information"
+msgstr "Pas d'info"
 
-msgid ""
-"No saved cities found.\n"
-"First add cities via the location screen."
-msgstr ""
-"Aucune ville enregistrée.\n"
-"Ajoutez d'abord des villes via l'écran des lieux."
+msgid "No saved cities found.\nFirst add cities via the location screen."
+msgstr "Aucune ville enregistrée trouvée.\nAjoutez d'abord des villes via l'écran des lieux."
 
 msgid "Not found"
 msgstr "Non trouvé"
 
 msgid "Press YELLOW to choose a 2nd location."
-msgstr "Appuyez sur JAUNE pour choisir un 2e lieu."
+msgstr "Appuyez sur JAUNE pour choisir un 2ème lieu."
 
 msgid "Rain: "
-msgstr "Pluie : "
+msgstr "Pluie: "
 
 msgid "Select"
 msgstr "Sélectionner"
@@ -329,52 +337,56 @@ msgid "Settings"
 msgstr "Paramètres"
 
 msgid "Severe cold!"
-msgstr "Froid intense !"
+msgstr "Froid rigoureux!"
 
 msgid "Standard"
-msgstr "Par défaut"
+msgstr "Standard"
 
 msgid "Standard (iconpack)"
-msgstr "Par défaut (pack d'icônes)"
+msgstr "Standard (pack icônes)"
 
 msgid "Standard Icons"
-msgstr "Icônes par défaut"
+msgstr "Icônes standard"
 
 msgid "Strong wind!"
-msgstr "Vent fort !"
+msgstr "Vent fort!"
 
 msgid "Sun: "
-msgstr "Soleil : "
+msgstr "Soleil: "
+
+msgid "TheWeather_v.%s"
+msgstr "LaMétéo_v.%s"
 
 msgid "Very heavy rain!"
-msgstr "Très forte pluie !"
+msgstr "Pluie très violente!"
 
 msgid "Warm weather!"
-msgstr "Temps chaud !"
+msgstr "Temps chaud!"
 
-msgid ""
-"Whoops!\n"
-"Slow or no Internet connection\n"
-"Please try again"
-msgstr ""
-"Oups !\n"
-"Connexion Internet lente ou inexistante\n"
-"Veuillez réessayer"
+msgid "Whoops!\nSlow or no Internet connection\nPlease try again"
+msgstr "Oups!\nConnexion Internet lente ou absente\nVeuillez réessayer"
 
 msgid "Wind: "
-msgstr "Vent : "
+msgstr "Vent: "
 
-msgid "Loading radar..."
-msgstr "Chargement du radar..."
-
-msgid "Please wait..."
-msgstr "Veuillez patienter..."
-
-msgid "Map zoom: %s"
-msgstr "Zoom de la carte : %s"
-
-msgid "Tip!\nPress the hidden Yellow button in the main menu to open the RainRadar.\n\nPress the hidden Green button in the main menu to change the hour interval.\n\nPress the hidden Blue button in the main menu to compare two cities.\n\nPress OK here to toggle the temperature overlay: %s"
-msgstr "Astuce !\nAppuyez sur le bouton jaune caché dans le menu principal pour ouvrir le radar de pluie.\n\nAppuyez sur le bouton vert caché dans le menu principal pour changer l'intervalle horaire.\n\nAppuyez sur le bouton bleu caché dans le menu principal pour comparer deux villes.\n\nAppuyez sur OK ici pour activer/désactiver la superposition de température : %s"
+msgid ""
+"Tip!\n"
+"Press the hidden Yellow button in the main menu to open the RainRadar.\n"
+"\n"
+"Press the hidden Green button in the main menu to change the hour interval.\n"
+"\n"
+"Press the hidden Blue button in the main menu to compare two cities.\n"
+"\n"
+"Press OK here to toggle the temperature overlay: %s"
+msgstr ""
+"Astuce!\n"
+"Appuyez sur le bouton Jaune caché du menu principal pour ouvrir le Radar de pluie.\n"
+"\n"
+"Appuyez sur le bouton Vert caché du menu principal pour changer l'intervalle d'heures.\n"
+"\n"
+"Appuyez sur le bouton Bleu caché du menu principal pour comparer deux villes.\n"
+"\n"
+"Appuyez sur OK ici pour activer/désactiver l'affichage de la température: %s"
 
 msgid "ON"
 msgstr "ACTIVÉ"
