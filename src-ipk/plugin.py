@@ -2630,7 +2630,7 @@ class RadarScreen(Screen):
             self.skin = """
                 <screen name="RadarScreen" position="center,center" size="1920,1080" flags="wfNoBorder" title="Rain radar">
                 """ + baseWidgets + overlayWidgets + """
-                <widget name="zoomList" position="1719,192" size="100,480" itemHeight="40" font="Regular;32" valign="center" scrollbarMode="showOnDemand" selectionPixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/list/list10024.png"/>\n
+                <widget name="zoomList" position="1719,192" size="100,480" itemHeight="40" font="Regular;32" valign="center" scrollbarMode="showOnDemand" selectionPixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/list/list10030.png"/>\n
                 <widget name="zoomTitle" position="1719,157" size="190,36" zPosition="2" font="Regular;32" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1"/>
                 <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/borders/smallline3.png" position="0,112" size="1920,3" zPosition="1"/>
                 <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/borders/smallline3.png" position="0,1010" size="1920,3" zPosition="1"/>
@@ -2639,7 +2639,7 @@ class RadarScreen(Screen):
                 <widget source="session.VideoPicture" render="Pig" position="30,160" size="720,405" backgroundColor="#ff000000" zPosition="1"/>
                 <widget source="session.CurrentService" render="Label" position="30,125" size="720,36" zPosition="1" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" font="Regular;28" noWrap="1" valign="center" halign="center"><convert type="ServiceName">Name</convert></widget>
                 <widget name="attribution" position="10,990" size="600,25" font="Regular;16" transparent="1" foregroundColor="#00ffffff" backgroundColor="#00202020"/>
-                <widget name="radar" position="969,168" size="500,42" valign="center" halign="left" zPosition="3" font="Regular;36" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget name="radar" position="957,115" size="500,42" valign="center" halign="left" zPosition="3" font="Regular;36" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
                 <widget name="lastUpdate" position="959,920" size="400,36" zPosition="1" font="Regular;28" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
                 <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/red34.png" position="192,1022" size="34,34" alphatest="blend"/>
                 <widget name="key_red" position="242,1015" size="370,48" zPosition="1" font="Regular;40" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
@@ -2668,7 +2668,7 @@ class RadarScreen(Screen):
                 <widget source="session.VideoPicture" render="Pig" position="85,120" size="417,243" backgroundColor="#ff000000" zPosition="1"/>
                 <widget source="session.CurrentService" render="Label" position="85,93" size="417,32" zPosition="1" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" font="Regular;28" noWrap="1" valign="center" halign="center"><convert type="ServiceName">Name</convert></widget>
                 <widget name="attribution" position="10,620" size="500,17" font="Regular;12" transparent="1" foregroundColor="#00ffffff" backgroundColor="#00202020"/>
-                <widget name="radar" position="647,133" size="350,32" valign="center" halign="left" zPosition="3" font="Regular;24" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <widget name="radar" position="640,93" size="350,32" valign="center" halign="left" zPosition="3" font="Regular;24" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
                 <widget name="lastUpdate" position="639,626" size="400,25" font="Regular;16" transparent="1" foregroundColor="#00ffffff" backgroundColor="#00202020"/>
                 <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/red26.png" position="145,663" size="26,26" alphatest="blend"/>
                 <widget name="key_red" position="185,663" size="220,32" zPosition="1" font="Regular;24" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
