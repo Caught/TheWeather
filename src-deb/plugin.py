@@ -1,4 +1,4 @@
-#v.4.1
+#v.4.2
 import os
 import sys
 import time
@@ -31,7 +31,7 @@ from Components.Converter.ClockToText import ClockToText
 from Components.MultiContent import MultiContentEntryText
 from Components.ActionMap import ActionMap, HelpableActionMap
 from Tools.Directories import resolveFilename, SCOPE_CONFIG, SCOPE_PLUGINS, SCOPE_LANGUAGE
-from enigma import eListboxPythonMultiContent, loadPNG, gFont, RT_HALIGN_LEFT, RT_HALIGN_RIGHT, RT_HALIGN_CENTER
+from enigma import eListboxPythonMultiContent, loadPNG, gFont, RT_HALIGN_LEFT, RT_HALIGN_RIGHT, RT_HALIGN_CENTER, RT_VALIGN_CENTER
 
 print("[TheWeather] loadPNG doc: %r" % (loadPNG.__doc__,))
 
@@ -73,7 +73,7 @@ def getCoordsFromEntry(value):
             return None, None
     return None, None
 
-version = '4.1'
+version = '4.2'
 PluginLanguageDomain = "FileBrowser"
 PluginLanguagePath = "Extensions/TheWeather/locale/"
 OAWeather = resolveFilename(SCOPE_PLUGINS, "Extensions/{}".format('OAWeather'))
@@ -117,6 +117,8 @@ screens = []
 _restartTimer = None
 _restartTimerConn = None
 _restartInProgress = False
+_lastExitTime = [0.0]
+_overlayLastCheck = 0.0
 _overlayScreen = None
 _overlayEnabled = False
 _overlayInfoscreenOpen = False
@@ -124,6 +126,13 @@ _overlaySession = None
 OVERLAY_CFG = CFG_DIR + "/TheWeather_overlay.cfg"
 RADAR_ZOOM_CFG = CFG_DIR + "/TheWeather_radarzoom.cfg"
 RADAR_ZOOM_LEVELS = list(range(5, 17))  # vrije keuze: zoom 5 t/m 16
+
+def _debounced(minInterval=0.4):
+    now = time.time()
+    if now - _lastExitTime[0] < minInterval:
+        return False
+    _lastExitTime[0] = now
+    return True
 
 def _readOverlayConfig():
     try:
@@ -133,9 +142,13 @@ def _readOverlayConfig():
         return False
 
 def _overlayCheckVisibility():
-    global _overlayScreen, _overlayEnabled, _overlaySession
+    global _overlayScreen, _overlayEnabled, _overlaySession, _overlayLastCheck
     if _overlayScreen is None:
         return
+    now = time.time()
+    if now - _overlayLastCheck < 0.15:
+        return
+    _overlayLastCheck = now
     try:
         cur_w = _detectCanvasWidth()
         if _overlayScreen.instance:
@@ -225,7 +238,8 @@ def getLocWeer(iscity=None):
         citynamedisplay = str(mydata.rsplit("-", 1)[0])
         _updateOverlayFromWeatherData()
         return True
-    except:
+    except Exception as e:
+        print("[TheWeather] getLocWeer: primaire lookup mislukt, fallback:", e)
         try:
             snewy = inputCity.replace(" ", "%20").split("_")
             countycodenewy = ""
@@ -280,7 +294,8 @@ def getLocWeerFor(inputCity):
         data = json.loads(antw)
         naam = str(inputCity.rsplit("-", 1)[0])
         return data, naam
-    except:
+    except Exception as e:
+        print("[TheWeather] getLocWeerFor: primaire lookup mislukt, fallback:", e)
         try:
             snewy = inputCity.replace(" ", "%20").split("_")
             countycodenewy = ""
@@ -507,6 +522,7 @@ class sevendays(Screen):
     def __init__(self, session):
         Screen.__init__(self, session)
         AddNewScreen(self)
+        self.onClose.append(self._cleanupPicload)
         self.onClose.append(lambda: RemoveScreen(self))
         dayinfoblok = ""
         global weatherData
@@ -521,9 +537,11 @@ class sevendays(Screen):
                     protemp.append(round(prochours["temperature"]))
                 if len(protemp) > 3:
                     break
-        except:
-            pass
-        if protemp[0] > protemp[1]:
+        except Exception as e:
+            print("[TheWeather] protemp berekening mislukt:", e)
+        if len(protemp) < 2:
+            peocpic = "tempeven.png"
+        elif protemp[0] > protemp[1]:
             peocpic = "tempcold.png"
         elif protemp[0] < protemp[1]:
             peocpic = "temphot.png"
@@ -546,7 +564,8 @@ class sevendays(Screen):
                     dataUrr = dataDagen[0]["hours"][0]["iconcode"]
                     sunrise = (str(dataDagen[0]["sunrise"]).split("T")[1])[:-3]
                     sunset = (str(dataDagen[0]["sunset"]).split("T")[1])[:-3]
-                except:
+                except Exception as e:
+                    print("[TheWeather] sevendays: dagdata ontbreekt (HD):", e)
                     0+0
                 if happydays.get("iconcode"):
                     losticon = happydays["iconcode"]
@@ -646,7 +665,8 @@ class sevendays(Screen):
                     dataUrr = dataDagen[0]["hours"][0]["iconcode"]
                     sunrise = (str(dataDagen[0]["sunrise"]).split("T")[1])[:-3]
                     sunset = (str(dataDagen[0]["sunset"]).split("T")[1])[:-3]
-                except:
+                except Exception as e:
+                    print("[TheWeather] sevendays: dagdata ontbreekt (SD):", e)
                     0+0
                 if happydays.get("iconcode"):
                     losticon = happydays["iconcode"]
@@ -824,6 +844,9 @@ class sevendays(Screen):
         self._alertFixTimer_conn = safeTimerCallback(self.alertFixTimer, self.updateFrameselect)
         self.alertFixTimer.start(200, True)
 
+    def _cleanupPicload(self):
+        self._closed = True
+    
     def getSlotHours(self, day):
         global weatherData
         dataDagen = weatherData["days"]
@@ -873,7 +896,8 @@ class sevendays(Screen):
             self["GevoelsTemp1"].setText(_("Feels Like: ") + str("%.1f" % dataPerUur[(0)]["feeltemperature"]) + "\xb0C")
             self["winddir1"].setText(_("Wind direction: ") + str(winddirtext(dataPerUur[(0)]["winddirection"])))
             self["bigweathertype1"].setText(icontotext(str(dataPerUur[(0)]["iconcode"])))
-        except:
+        except Exception as e:
+            print("[TheWeather] updateFrameselect: hoofdgegevens onvolledig:", e)
             0+0
 
         try:
@@ -972,7 +996,8 @@ class sevendays(Screen):
                     self["dayspeed3" + str(perUurUpdate)].setText("")
                     self["sunpercent3" + str(perUurUpdate)].setText("")
                     self["hrdayper3" + str(perUurUpdate)].setText("")
-            except:
+            except Exception as e:
+                print("[TheWeather] updateFrameselect: eerste key-variant mislukt:", e)
                 try:
                     if slotHasData:
                         entry = slotHours[perUurUpdate]
@@ -989,7 +1014,8 @@ class sevendays(Screen):
                         self["dayspeed3" + str(perUurUpdate)].setText("")
                         self["sunpercent3" + str(perUurUpdate)].setText("")
                         self["hrdayper3" + str(perUurUpdate)].setText("")
-                except:
+                except Exception as e:
+                    print("[TheWeather] updateFrameselect: beide key-varianten mislukt:", e)
                     self["dayIcon" + str(self.selected) + str(perUurUpdate)].hide()
                     self["vlakuur" + str(perUurUpdate)].hide()
                     self["sunicon" + str(perUurUpdate)].hide()
@@ -1022,6 +1048,7 @@ class sevendays(Screen):
                 bgfile = "/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/" + SHARED_PACK + "/backgroundhd.png"
             else:
                 bgfile = "/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/" + SHARED_PACK + "/backgroundhd.png"
+        print("[TheWeather] loadBackground: START decode", bgfile)
         try:
             if sz_w > 1800:
                 self.picload.setPara([1920, 1080, 1, 1, False, 1, "#ff000000"])
@@ -1032,11 +1059,13 @@ class sevendays(Screen):
             print("loadBackground: error loading background:", e)
 
     def bgPictureLoaded(self, picInfo=None):
+        if getattr(self, "_closed", False):
+            return
         if not hasattr(self, 'picload') or self.picload is None:
             return
         try:
             ptr = self.picload.getData()
-            if ptr is not None:
+            if ptr is not None and self["bgpic"].instance is not None:
                 self["bgpic"].instance.setPixmap(ptr)
                 self["bgpic"].show()
         except Exception as e:
@@ -1595,7 +1624,8 @@ class localcityscreen(Screen):
                     self.session.open(sevendays)
                 else:
                     self.session.open(MessageBox, _("Download error: Check spelling."), MessageBox.TYPE_INFO)
-            except:
+            except Exception as e:
+                print("[TheWeather] localcityscreen: download mislukt:", e)
                 self.session.open(MessageBox, _("Download error: No response try again"), MessageBox.TYPE_INFO)
 
     def openRadarForSelected(self):
@@ -1630,8 +1660,7 @@ class localcityscreen(Screen):
                 file.write(safeStr(x) + "\n")
             file.close()
             self.close()
-            self.close()
-    
+            
     def onCityTyped(self, searchterm=None):
         if not searchterm:
             return
@@ -1665,15 +1694,18 @@ class localcityscreen(Screen):
             file.write(safeStr(x) + "\n")
         file.close()
         self.close()
-        self.close()
-    
+        
     def addcityinf(self):
         self.session.open(infoscreen)
 
     def exit(self):
+        if not _debounced():
+            return
         self.close(localcityscreen)
 
     def cancel(self):
+        if not _debounced():
+            return
         self.close(localcityscreen)
 
 class CitySuggestListScreen(Screen):
@@ -1821,7 +1853,7 @@ class infoscreen(Screen):
         self["key_blue"] = Label(_("Background"))
         
         self["helpinfo"] = Label(_("Tip!\nPress the hidden Yellow button in the main menu to open the RainRadar.\n\nPress the hidden Green button in the main menu to change the hour interval.\n\nPress the hidden Blue button in the main menu to compare two cities.\n\nPress OK here to toggle the temperature overlay: %s") % (_("ON") if _overlayEnabled else _("OFF"),))
-        self["actions"] = ActionMap(["WizardActions"], {"back": self.close, "ok": self.toggleOverlay}, -1)
+        self["actions"] = ActionMap(["WizardActions"], {"back": self.exit, "ok": self.toggleOverlay}, -1)
         self["ColorActions"] = HelpableActionMap(self, "ColorActions", {"red": self.exit, "green": self.default, "yellow": self.extra, "blue": self.openBackgroundPicker}, -1)
         self["version"] = Label("TheWeather_v.%s" % version)
         AddNewScreen(self)
@@ -1837,6 +1869,8 @@ class infoscreen(Screen):
         _overlayCheckVisibility()
 
     def exit(self):
+        if not _debounced():
+            return
         self.close()
 
     def toggleOverlay(self):
@@ -2122,12 +2156,6 @@ class twolocations(Screen):
             self._setText(prefix + "weertype", icontotext(dag.get("iconcode", "")))
         except Exception:
             pass
-
-        #try:
-            #feeltemp = dag.get("feeltemperature", dag.get("maxtemperature", "--"))
-            #self._setText(prefix + "feel", _("Feels Like: ") + "%.0f\xb0C" % float(feeltemp))
-        #except Exception:
-            #pass
 
         try:
             hours = dag.get("hours", [])
@@ -2446,8 +2474,8 @@ def ClosePlugin():
     for screen in list(screens):
         try:
             screen.close()
-        except:
-            None
+        except Exception as e:
+            print("[TheWeather] ClosePlugin: sluiten van scherm mislukt:", e)
     del screens[:]
 
 def safeSignalConnect(sig, func):
@@ -2630,7 +2658,7 @@ class RadarScreen(Screen):
             self.skin = """
                 <screen name="RadarScreen" position="center,center" size="1920,1080" flags="wfNoBorder" title="Rain radar">
                 """ + baseWidgets + overlayWidgets + """
-                <widget name="zoomList" position="1719,192" size="100,480" itemHeight="40" font="Regular;32" valign="center" scrollbarMode="showOnDemand" selectionPixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/list/list10030.png"/>\n
+                <widget name="zoomList" position="1719,192" size="100,480" itemHeight="40" font="Regular;32" scrollbarMode="showOnDemand" selectionPixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/list/list10030.png"/>\n
                 <widget name="zoomTitle" position="1719,157" size="190,36" zPosition="2" font="Regular;32" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1"/>
                 <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/borders/smallline3.png" position="0,112" size="1920,3" zPosition="1"/>
                 <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/borders/smallline3.png" position="0,1010" size="1920,3" zPosition="1"/>
@@ -2659,7 +2687,7 @@ class RadarScreen(Screen):
             self.skin = """
                 <screen name="RadarScreen" position="center,center" size="1280,720" flags="wfNoBorder" title="Rain radar">
                 """ + baseWidgets + overlayWidgets + """
-                <widget name="zoomList" position="1140,151" size="66,336" itemHeight="28" font="Regular;24" valign="center" scrollbarMode="showOnDemand" selectionPixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/list/list6640.png"/>\n
+                <widget name="zoomList" position="1140,151" size="66,336" itemHeight="28" font="Regular;24" scrollbarMode="showOnDemand" selectionPixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/list/list6640.png"/>\n
                 <widget name="zoomTitle" position="1140,123" size="135,32" zPosition="2" font="Regular;24" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1"/>
                 <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/borders/smallline2.png" position="0,88" size="1280,2" zPosition="1"/>
                 <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/borders/smallline2.png" position="0,648" size="1280,2" zPosition="1"/>
@@ -2701,7 +2729,20 @@ class RadarScreen(Screen):
                 print("[TheWeather] radarzoom cfg read error:", e)
         self.BASE_ZOOM_OVERRIDE = self.ZOOM_LEVELS[self.zoomIndex]
         self["key_blue"] = Label(_("Map zoom: %s") % self.ZOOM_LEVELS[self.zoomIndex])
-        self["zoomList"] = MenuList([str(z) for z in self.ZOOM_LEVELS])
+        
+        zoomItemHeight = 40 if sz_w > 1800 else 28
+        zoomFontSize = 32 if sz_w > 1800 else 24
+        zoomWidth = 100 if sz_w > 1800 else 66
+        zoomYOffset = -4 if sz_w > 1800 else -3
+        self.zoomRes = []
+        for z in self.ZOOM_LEVELS:
+            self.zoomRes.append([str(z), MultiContentEntryText(
+                pos=(0, zoomYOffset), size=(zoomWidth, zoomItemHeight), font=0,   
+                flags=RT_HALIGN_CENTER | RT_VALIGN_CENTER, text=str(z))])
+        
+        self["zoomList"] = MenuList(self.zoomRes, False, eListboxPythonMultiContent)
+        self["zoomList"].l.setItemHeight(zoomItemHeight)
+        self["zoomList"].l.setFont(0, gFont("Regular", zoomFontSize))
         self["zoomList"].moveToIndex(self.zoomIndex)
         self["zoomTitle"] = Label(_("Zoom"))
         self["actions"] = ActionMap(["OkCancelActions", "ColorActions", "DirectionActions"], {
@@ -2775,7 +2816,7 @@ class RadarScreen(Screen):
     def _currentZoomIndex(self):
         try:
             current = self["zoomList"].getCurrent()
-            return self.ZOOM_LEVELS.index(int(current))
+            return self.ZOOM_LEVELS.index(int(current[0]))
         except Exception:
             return self.zoomIndex
 
@@ -2825,7 +2866,7 @@ class RadarScreen(Screen):
         shutil.rmtree(self.tmpDir, ignore_errors=True)
     
     def _fetchTilesWorker(self):
-        """Draait in een achtergrondthread: enkel downloaden, geen widgets aanraken."""
+        
         try:
             braHeaders = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36'}
             osmHeaders = {'User-Agent': 'TheWeather-Enigma2Plugin/1.0 (https://www.linuxsat-support.com/thread/150741-theweather-plugin-v3-x-py2-py3-deb-ipk/)'}
