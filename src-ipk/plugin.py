@@ -1,4 +1,4 @@
-#v.4.3
+#v.4.4
 import os
 import sys
 import time
@@ -73,7 +73,7 @@ def getCoordsFromEntry(value):
             return None, None
     return None, None
 
-version = '4.3'
+version = '4.4'
 PluginLanguageDomain = "FileBrowser"
 PluginLanguagePath = "Extensions/TheWeather/locale/"
 OAWeather = resolveFilename(SCOPE_PLUGINS, "Extensions/{}".format('OAWeather'))
@@ -2695,7 +2695,14 @@ def safeSignalConnect(sig, func):
     if hasattr(sig, "connect"):
         try:
             conn = sig.connect(func)
-            return _SignalConnection(conn.disconnect) if conn else None
+            if conn is not None:
+                if hasattr(conn, "disconnect"):
+                    return _SignalConnection(conn.disconnect)
+                else:
+                    holder = {"conn": conn}
+                    def _drop():
+                        holder["conn"] = None
+                    return _SignalConnection(_drop)
         except Exception as e:
             print("[TheWeather] safeSignalConnect: .connect faalde:", e)
 
@@ -2808,16 +2815,16 @@ def main(session, **kwargs):
 
 OVERLAY_CONTAINER_WIDTH = 450     #overlay patch w
 OVERLAY_CONTAINER_HEIGHT = 60
-OVERLAY_MARGIN_RIGHT = 0          # size from screen rightside
-OVERLAY_Y = 0                     # size from above
+OVERLAY_MARGIN_RIGHT = 0          #size from screen rightside
+OVERLAY_Y = 0                     #size from above
 
-OVERLAY_RAIN_X = 0
+OVERLAY_RAIN_X = 60               #value higher = -->
 OVERLAY_RAIN_Y = 6
 OVERLAY_RAIN_WIDTH = 260
 OVERLAY_RAIN_HEIGHT = 34          #textframe 12
 
 OVERLAY_TEMP_X = 320              #value higher = -->
-OVERLAY_TEMP_Y = 10
+OVERLAY_TEMP_Y = 2                #Temp value
 OVERLAY_TEMP_WIDTH = 160
 OVERLAY_TEMP_HEIGHT = 44          #40
 

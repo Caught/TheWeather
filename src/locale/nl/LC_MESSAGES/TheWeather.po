@@ -95,7 +95,7 @@ msgid "Europe"
 msgstr "Europa"
 
 msgid "Exit"
-msgstr "Exit"
+msgstr "Terug"
 
 msgid "Favorite Locations"
 msgstr "Favoriete Locaties"
@@ -391,5 +391,39 @@ msgstr ""
 msgid "ON"
 msgstr "AAN"
 
+msgid ""
+"Tip!\n"
+"Press the hidden Yellow button in the main menu to open the RainRadar.\n"
+"\n"
+"Press the hidden Green button in the main menu to change the hour interval.\n"
+"\n"
+"Press the hidden Blue button in the main menu to compare two cities.\n"
+"\n"
+"Press OK here to cycle the overlay: %s"
+msgstr ""
+"Tip!\n"
+"Druk op de verborgen Gele knop in het hoofdmenu om de RegenRadar te openen.\n"
+"\n"
+"Druk op de verborgen Groene knop in het hoofdmenu om het uurinterval te wijzigen.\n"
+"\n"
+"Druk op de verborgen Blauwe knop in het hoofdmenu om twee steden te vergelijken.\n"
+"\n"
+"Druk hier op OK om de overlay te doorlopen: %s"
+
 msgid "OFF"
 msgstr "UIT"
+
+msgid "TEMP"
+msgstr "TEMP"
+
+msgid "TEMP+RAIN"
+msgstr "TEMP+REGEN"
+
+msgid "Rain in ~%d min"
+msgstr "Regen over ~%d min"
+
+msgid "Rain stops in ~%d min"
+msgstr "Regen stopt over ~%d min"
+
+msgid "Rain (2h+)"
+msgstr "Regen (2u+)"
