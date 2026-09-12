@@ -3,7 +3,7 @@ set -e
 
 REPO="Caught/TheWeather"
 NAME="theweather"
-VERSION="4.3"
+VERSION="4.4"
 
 if command -v dpkg >/dev/null 2>&1; then
     PKG="enigma2-plugin-extensions-${NAME}_${VERSION}_all.deb"
