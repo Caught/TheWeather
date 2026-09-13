@@ -14,7 +14,7 @@ echo "=========================================="
 if command -v opkg >/dev/null 2>&1; then
     echo "-> OPKG package manager detected (IPK system)..."
     PACKAGE_FILE="enigma2-plugin-extensions-theweather_${VERSION}_all.ipk"
-    DOWNLOAD_URL="${REPO_RAW}/${PACKAGE_FILE}"
+    DOWNLOAD_URL="${REPO_RAW}/ipk/${PACKAGE_FILE}"
     
     cd ${TMP_DIR}
     rm -f enigma2-plugin-extensions-theweather_*.ipk
@@ -35,7 +35,7 @@ if command -v opkg >/dev/null 2>&1; then
 elif command -v dpkg >/dev/null 2>&1; then
     echo "-> DPKG package manager detected (DEB system / DreamOS)..."
     PACKAGE_FILE="enigma2-plugin-extensions-theweather_${VERSION}_all.deb"
-    DOWNLOAD_URL="${REPO_RAW}/${PACKAGE_FILE}"
+    DOWNLOAD_URL="${REPO_RAW}/deb/${PACKAGE_FILE}"
     
     cd ${TMP_DIR}
     rm -f enigma2-plugin-extensions-theweather_*.deb
