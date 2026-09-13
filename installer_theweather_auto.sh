@@ -1,123 +1,79 @@
 #!/bin/sh
-set -e
+# Auto-installer script for TheWeather Enigma2 Plugin
+# Repository: https://github.com/Caught/TheWeather
 
-REPO="Caught/TheWeather"
-NAME="theweather"
-VERSION="4.4"
+REPO_RAW="https://raw.githubusercontent.com/Caught/TheWeather/main"
+TMP_DIR="/tmp"
 
-download_and_check() {
-    URL="$1"
-    DEST="$2"
+echo "=========================================="
+echo "    Installing TheWeather Plugin...       "
+echo "=========================================="
 
-    echo "Downloading $(basename "$DEST") ..."
-    echo "URL: $URL"
-    echo ""
-
-    rm -f "$DEST"
-
-    if ! wget \
-        --no-check-certificate \
-        --timeout=60 \
-        --tries=3 \
-        -O "$DEST" \
-        "$URL"
-    then
-        echo ""
-        echo "ERROR: download failed:"
-        echo "  $URL"
-        rm -f "$DEST"
+# 1. Detect package manager and install plugin
+if command -v opkg >/dev/null 2>&1; then
+    echo "-> OPKG package manager detected (IPK system)..."
+    PACKAGE_FILE="enigma2-plugin-extensions-theweather_all.ipk"
+    DOWNLOAD_URL="${REPO_RAW}/${PACKAGE_FILE}"
+    
+    cd ${TMP_DIR}
+    rm -f ${PACKAGE_FILE}
+    
+    echo "-> Downloading ${PACKAGE_FILE}..."
+    wget -q "${DOWNLOAD_URL}" -O ${TMP_DIR}/${PACKAGE_FILE} || curl -sL "${DOWNLOAD_URL}" -o ${TMP_DIR}/${PACKAGE_FILE}
+    
+    if [ -f "${TMP_DIR}/${PACKAGE_FILE}" ]; then
+        echo "-> Installing package..."
+        opkg install --force-overwrite ${TMP_DIR}/${PACKAGE_FILE}
+        rm -f ${TMP_DIR}/${PACKAGE_FILE}
+        echo "-> Installation completed successfully!"
+    else
+        echo "-> ERROR: Failed to download ${PACKAGE_FILE}."
         exit 1
     fi
 
-    SIZE=$(wc -c < "$DEST" 2>/dev/null || echo 0)
-
-    echo ""
-    echo "Downloaded size: ${SIZE} bytes"
-
-    if [ "$SIZE" -lt 1000 ]; then
-        echo ""
-        echo "ERROR: downloaded file is too small:"
-        echo "  ${SIZE} bytes"
-        echo ""
-        echo "The downloaded file is probably invalid."
-        rm -f "$DEST"
+elif command -v dpkg >/dev/null 2>&1; then
+    echo "-> DPKG package manager detected (DEB system / DreamOS)..."
+    PACKAGE_FILE="enigma2-plugin-extensions-theweather_all.deb"
+    DOWNLOAD_URL="${REPO_RAW}/${PACKAGE_FILE}"
+    
+    cd ${TMP_DIR}
+    rm -f ${PACKAGE_FILE}
+    
+    echo "-> Downloading ${PACKAGE_FILE}..."
+    wget -q "${DOWNLOAD_URL}" -O ${TMP_DIR}/${PACKAGE_FILE} || curl -sL "${DOWNLOAD_URL}" -o ${TMP_DIR}/${PACKAGE_FILE}
+    
+    if [ -f "${TMP_DIR}/${PACKAGE_FILE}" ]; then
+        echo "-> Installing package..."
+        dpkg -i ${TMP_DIR}/${PACKAGE_FILE}
+        apt-get install -f -y >/dev/null 2>&1
+        rm -f ${TMP_DIR}/${PACKAGE_FILE}
+        echo "-> Installation completed successfully!"
+    else
+        echo "-> ERROR: Failed to download ${PACKAGE_FILE}."
         exit 1
     fi
-
-    # IPK files are ar archives and must start with !<arch>
-    MAGIC=$(dd if="$DEST" bs=1 count=7 2>/dev/null || true)
-
-    if [ "$MAGIC" != "!<arch>" ]; then
-        echo ""
-        echo "ERROR: downloaded file is NOT a valid IPK archive."
-        echo ""
-        echo "Expected IPK header:"
-        echo "  !<arch>"
-        echo ""
-        echo "Received:"
-        echo "  $MAGIC"
-        echo ""
-        echo "File:"
-        echo "  $DEST"
-        echo ""
-        echo "Possible causes:"
-        echo "  - GitHub returned an error page"
-        echo "  - incomplete download"
-        echo "  - proxy/cache problem"
-        echo "  - invalid package in the repository"
-        echo ""
-
-        rm -f "$DEST"
-        exit 1
-    fi
-
-    echo "IPK archive check: OK"
-    echo ""
-}
-
-
-if command -v dpkg >/dev/null 2>&1; then
-
-    PKG="enigma2-plugin-extensions-${NAME}_${VERSION}_all.deb"
-    URL="https://raw.githubusercontent.com/${REPO}/main/deb/${PKG}"
-
-    download_and_check "$URL" "/tmp/${PKG}"
-
-    echo "Installing ${PKG} ..."
-    dpkg -i "/tmp/${PKG}"
-
-    rm -f "/tmp/${PKG}"
-
-elif command -v opkg >/dev/null 2>&1; then
-
-    PKG="enigma2-plugin-extensions-${NAME}_${VERSION}_all.ipk"
-    URL="https://raw.githubusercontent.com/${REPO}/main/ipk/${PKG}"
-
-    download_and_check "$URL" "/tmp/${PKG}"
-
-    echo "Installing ${PKG} ..."
-
-    opkg install \
-        --force-reinstall \
-        --force-downgrade \
-        --force-overwrite \
-        "/tmp/${PKG}"
-
-    rm -f "/tmp/${PKG}"
-
 else
-
-    echo ""
-    echo "ERROR: No opkg or dpkg found."
-    echo "Cannot proceed with installation."
+    echo "-> ERROR: No supported package manager (opkg/dpkg) found on this system."
     exit 1
-
 fi
 
+# 2. Prompt for GUI restart
+echo "=========================================="
+printf "Do you want to restart the GUI (Enigma2) now? [y/N]: "
+read RESTART < /dev/tty
 
-echo ""
-echo "======================================================="
-echo " Installation of TheWeather v${VERSION} completed!"
-echo " Please restart Enigma2 (GUI) to activate the plugin."
-echo "======================================================="
-echo ""
+case "$RESTART" in 
+  y|Y|yes|YES ) 
+    echo "-> Restarting GUI now..."
+    if command -v init >/dev/null 2>&1; then
+        init 4 && init 3
+    else
+        systemctl restart enigma2
+    fi
+    ;;
+  * ) 
+    echo "-> Restart skipped. Please remember to restart the GUI manually!"
+    ;;
+esac
+
+exit 0
