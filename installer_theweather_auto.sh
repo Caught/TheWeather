@@ -2,7 +2,6 @@
 # Auto-installer script for TheWeather Enigma2 Plugin
 # Repository: https://github.com/Caught/TheWeather
 
-REPO_RAW="https://raw.githubusercontent.com/Caught/TheWeather/main"
 TMP_DIR="/tmp"
 VERSION="4.4"
 
@@ -10,47 +9,62 @@ echo "=========================================="
 echo "    Installing TheWeather Plugin...       "
 echo "=========================================="
 
+# Function to download from main or master branch
+download_file() {
+    SUBDIR="$1"
+    FILE="$2"
+    
+    URL_MAIN="https://raw.githubusercontent.com/Caught/TheWeather/main/${SUBDIR}/${FILE}"
+    URL_MASTER="https://raw.githubusercontent.com/Caught/TheWeather/master/${SUBDIR}/${FILE}"
+    
+    echo "-> Downloading ${FILE}..."
+    wget -q "${URL_MAIN}" -O "${TMP_DIR}/${FILE}"
+    
+    # Fallback to master branch if main returned empty/failed
+    if [ ! -s "${TMP_DIR}/${FILE}" ]; then
+        wget -q "${URL_MASTER}" -O "${TMP_DIR}/${FILE}"
+    fi
+}
+
 # 1. Detect package manager and install plugin
 if command -v opkg >/dev/null 2>&1; then
     echo "-> OPKG package manager detected (IPK system)..."
     PACKAGE_FILE="enigma2-plugin-extensions-theweather_${VERSION}_all.ipk"
-    DOWNLOAD_URL="${REPO_RAW}/ipk/${PACKAGE_FILE}"
     
     cd ${TMP_DIR}
     rm -f enigma2-plugin-extensions-theweather_*.ipk
     
-    echo "-> Downloading ${PACKAGE_FILE}..."
-    wget -q "${DOWNLOAD_URL}" -O ${TMP_DIR}/${PACKAGE_FILE}
+    download_file "ipk" "${PACKAGE_FILE}"
     
-    if [ -f "${TMP_DIR}/${PACKAGE_FILE}" ]; then
+    if [ -s "${TMP_DIR}/${PACKAGE_FILE}" ]; then
         echo "-> Installing package..."
         opkg install --force-overwrite ${TMP_DIR}/${PACKAGE_FILE}
         rm -f ${TMP_DIR}/${PACKAGE_FILE}
         echo "-> Installation completed successfully!"
     else
-        echo "-> ERROR: Failed to download ${PACKAGE_FILE}."
+        echo "-> ERROR: Could not download ${PACKAGE_FILE} from GitHub (main or master)."
+        rm -f ${TMP_DIR}/${PACKAGE_FILE}
         exit 1
     fi
 
 elif command -v dpkg >/dev/null 2>&1; then
     echo "-> DPKG package manager detected (DEB system / DreamOS)..."
     PACKAGE_FILE="enigma2-plugin-extensions-theweather_${VERSION}_all.deb"
-    DOWNLOAD_URL="${REPO_RAW}/deb/${PACKAGE_FILE}"
     
     cd ${TMP_DIR}
     rm -f enigma2-plugin-extensions-theweather_*.deb
     
-    echo "-> Downloading ${PACKAGE_FILE}..."
-    wget -q "${DOWNLOAD_URL}" -O ${TMP_DIR}/${PACKAGE_FILE}
+    download_file "deb" "${PACKAGE_FILE}"
     
-    if [ -f "${TMP_DIR}/${PACKAGE_FILE}" ]; then
+    if [ -s "${TMP_DIR}/${PACKAGE_FILE}" ]; then
         echo "-> Installing package..."
         dpkg -i ${TMP_DIR}/${PACKAGE_FILE}
         apt-get install -f -y >/dev/null 2>&1
         rm -f ${TMP_DIR}/${PACKAGE_FILE}
         echo "-> Installation completed successfully!"
     else
-        echo "-> ERROR: Failed to download ${PACKAGE_FILE}."
+        echo "-> ERROR: Could not download ${PACKAGE_FILE} from GitHub (main or master)."
+        rm -f ${TMP_DIR}/${PACKAGE_FILE}
         exit 1
     fi
 else
