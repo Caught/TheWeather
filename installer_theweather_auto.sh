@@ -38,11 +38,11 @@ if command -v opkg >/dev/null 2>&1; then
     
     if [ -s "${TMP_DIR}/${PACKAGE_FILE}" ]; then
         echo "-> Installing package..."
-        opkg install --force-overwrite ${TMP_DIR}/${PACKAGE_FILE}
+        opkg install --force-overwrite --force-reinstall ${TMP_DIR}/${PACKAGE_FILE}
         rm -f ${TMP_DIR}/${PACKAGE_FILE}
         echo "-> Installation completed successfully!"
     else
-        echo "-> ERROR: Could not download ${PACKAGE_FILE} from GitHub (main or master)."
+        echo "-> ERROR: Could not download ${PACKAGE_FILE} from GitHub."
         rm -f ${TMP_DIR}/${PACKAGE_FILE}
         exit 1
     fi
@@ -63,7 +63,7 @@ elif command -v dpkg >/dev/null 2>&1; then
         rm -f ${TMP_DIR}/${PACKAGE_FILE}
         echo "-> Installation completed successfully!"
     else
-        echo "-> ERROR: Could not download ${PACKAGE_FILE} from GitHub (main or master)."
+        echo "-> ERROR: Could not download ${PACKAGE_FILE} from GitHub."
         rm -f ${TMP_DIR}/${PACKAGE_FILE}
         exit 1
     fi
