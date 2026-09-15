@@ -673,12 +673,11 @@ download_package()
 
 
     if wget \
-        --no-verbose \
+        -q \
         --no-check-certificate \
-        --timeout=30 \
-        --tries=3 \
-        "$DOWNLOAD_URL" \
-        -O "$FILEPATH"
+        -T 30 \
+        -O "$FILEPATH" \
+        "$DOWNLOAD_URL"
     then
 
         log "Download successful."
