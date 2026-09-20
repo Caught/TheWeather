@@ -1,4 +1,4 @@
-#v.4.4
+#v.4.5
 import os
 import sys
 import time
@@ -73,7 +73,7 @@ def getCoordsFromEntry(value):
             return None, None
     return None, None
 
-version = '4.4'
+version = '4.5'
 PluginLanguageDomain = "FileBrowser"
 PluginLanguagePath = "Extensions/TheWeather/locale/"
 OAWeather = resolveFilename(SCOPE_PLUGINS, "Extensions/{}".format('OAWeather'))
@@ -168,6 +168,7 @@ def _overlayCheckVisibility():
             liveTv = False
         topScreen = screens[-1] if screens else None
         topIsInfoscreen = isinstance(topScreen, infoscreen)
+        topIsRadarScreen = isinstance(topScreen, RadarScreen)
         anyPluginScreenOpen = len(screens) > 0
 
         systemMenuOpen = False
@@ -179,7 +180,7 @@ def _overlayCheckVisibility():
         except Exception as e:
             print("[TheWeather] systemMenuOpen check error:", e)
 
-        if _overlayMode > 0 and (topIsInfoscreen or (liveTv and not anyPluginScreenOpen and not systemMenuOpen)):
+        if _overlayMode > 0 and (topIsInfoscreen or topIsRadarScreen or (liveTv and not anyPluginScreenOpen and not systemMenuOpen)):
             _overlayScreen.show()
             try:
                 if _overlayMode >= 2:
@@ -391,11 +392,14 @@ def getRainNowcast(lat, lon):
     if cached is not None:
         return cached
 
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36'}
-    urls = [
-        "https://gadgets.buienradar.nl/data/raintext?lat=%s&lon=%s" % (lat, lon),
-        "https://gpsgadget.buienradar.nl/data/raintext?lat=%s&lon=%s" % (lat, lon),
-    ]
+    inNlBe = 49.4 <= lat <= 53.7 and 2.3 <= lon <= 7.3
+    urls = []
+    if inNlBe:
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,         like Gecko) Chrome/70.0.3538.77 Safari/537.36'}
+        urls = [
+            "https://gadgets.buienradar.nl/data/raintext?lat=%s&lon=%s" % (lat, lon),
+            "https://gpsgadget.buienradar.nl/data/raintext?lat=%s&lon=%s" % (lat, lon),
+        ]
     for url in urls:
         try:
             req = urllib2.Request(url, data=None, headers=headers)
@@ -1098,10 +1102,12 @@ class sevendays(Screen):
                 print("[TheWeather] DEBUG uur=%s iconcode=%s" % (slotHours[perUurUpdate].get("hour"), slotHours[perUurUpdate].get("iconcode")))
                 iconpath = "/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/" + icoonpath + "/iconhd/" + slotHours[perUurUpdate]["iconcode"] + ".png"
                                 
-                try:
-                    self["dayIcon" + str(self.selected) + str(perUurUpdate)].instance.setPixmap(safeLoadPNG(iconpath))
-                except Exception as e:
-                    print("[TheWeather] DEBUG icon ERROR hour=%s iconpath=%s error=%s" % (slotHours[perUurUpdate].get("hour"), iconpath, e))
+                iconWidget = self["dayIcon" + str(self.selected) + str(perUurUpdate)]
+                if iconWidget.instance is not None:
+                    try:
+                        iconWidget.instance.setPixmap(safeLoadPNG(iconpath))
+                    except Exception as e:
+                        print("[TheWeather] DEBUG icon ERROR hour=%s iconpath=%s error=%s" % (slotHours[perUurUpdate].get("hour"), iconpath, e))
                     
                 self["rainicon" + str(perUurUpdate)].show()
                 self["rhicon" + str(perUurUpdate)].show()
@@ -1112,7 +1118,7 @@ class sevendays(Screen):
                     entry = slotHours[perUurUpdate]
                     self["dayhour3" + str(perUurUpdate)].setText(str(entry["hour"]) + _("h"))
                     self["daytemp3" + str(perUurUpdate)].setText('{:>4}'.format(str("%.0f" % entry["temperature"]) + "\xb0C"))
-                    self["daypercent3" + str(perUurUpdate)].setText(str(entry["precipation"]) + "%")
+                    self["daypercent3" + str(perUurUpdate)].setText(str(entry["precipitation"]) + "%")
                     self["dayspeed3" + str(perUurUpdate)].setText(str(entry["windspeed"]) + _("Km/h"))
                     self["sunpercent3" + str(perUurUpdate)].setText(str(entry["sunshine"]) + "%")
                     self["hrdayper3" + str(perUurUpdate)].setText(str(entry["humidity"]) + "%")
@@ -2893,7 +2899,9 @@ class RadarScreen(Screen):
     def __init__(self, session, lat=51.05, lon=3.72, zoom=7, cityname=""):
         Screen.__init__(self, session)
         self.skinName = ["RadarScreen"]
-
+        AddNewScreen(self)
+        self.onClose.append(lambda: RemoveScreen(self))
+        
         baseWidgets = ""
         overlayWidgets = ""
         if sz_w > 1800:
@@ -2911,8 +2919,7 @@ class RadarScreen(Screen):
                 <widget name="zoomTitle" position="1719,157" size="190,36" zPosition="2" font="Regular;32" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1"/>
                 <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/borders/smallline3.png" position="0,112" size="1920,3" zPosition="1"/>
                 <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/borders/smallline3.png" position="0,1010" size="1920,3" zPosition="1"/>
-                <widget source="global.CurrentTime" render="Label" position="1634,35" size="225,45" transparent="1" zPosition="3" font="Regular;36" foregroundColor="#00ffffff" backgroundColor="#00202020" valign="center" halign="right"><convert type="ClockToText">Format:%-H:%M</convert></widget>
-                <widget source="global.CurrentTime" render="Label" position="1409,74" size="450,37" transparent="1" zPosition="3" font="Regular;24" foregroundColor="#00ffffff" backgroundColor="#00202020" valign="center" halign="right"><convert type="ClockToText">Format:%a %d/%m/%y</convert></widget>
+                <widget source="global.CurrentTime" render="Label" position="1482,914" size="225,45" transparent="1" zPosition="3" font="Regular;28" foregroundColor="#00ffffff" backgroundColor="#00202020" valign="center" halign="right"><convert type="ClockToText">Format:%-H:%M</convert></widget>
                 <widget source="session.VideoPicture" render="Pig" position="30,160" size="720,405" backgroundColor="#ff000000" zPosition="1"/>
                 <widget source="session.CurrentService" render="Label" position="30,125" size="720,36" zPosition="1" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" font="Regular;28" noWrap="1" valign="center" halign="center"><convert type="ServiceName">Name</convert></widget>
                 <widget name="attribution" position="10,990" size="600,25" font="Regular;16" transparent="1" foregroundColor="#00ffffff" backgroundColor="#00202020"/>
@@ -2940,8 +2947,7 @@ class RadarScreen(Screen):
                 <widget name="zoomTitle" position="1140,123" size="135,32" zPosition="2" font="Regular;24" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1"/>
                 <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/borders/smallline2.png" position="0,88" size="1280,2" zPosition="1"/>
                 <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/borders/smallline2.png" position="0,648" size="1280,2" zPosition="1"/>
-                <widget source="global.CurrentTime" render="Label" position="1091,12" size="150,55" transparent="1" zPosition="1" font="Regular;24" foregroundColor="#00ffffff" backgroundColor="#00202020" valign="center" halign="right"><convert type="ClockToText">Format:%-H:%M</convert></widget>
-                <widget source="global.CurrentTime" render="Label" position="941,32" size="300,55" transparent="1" zPosition="1" font="Regular;16" foregroundColor="#00ffffff" backgroundColor="#00202020" valign="center" halign="right"><convert type="ClockToText">Format:%a %d/%m/%y</convert></widget>
+                <widget source="global.CurrentTime" render="Label" position="988,609" size="150,55" transparent="1" zPosition="1" font="Regular;16" foregroundColor="#00ffffff" backgroundColor="#00202020" valign="center" halign="right"><convert type="ClockToText">Format:%-H:%M</convert></widget>
                 <widget source="session.VideoPicture" render="Pig" position="85,120" size="417,243" backgroundColor="#ff000000" zPosition="1"/>
                 <widget source="session.CurrentService" render="Label" position="85,93" size="417,32" zPosition="1" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" font="Regular;28" noWrap="1" valign="center" halign="center"><convert type="ServiceName">Name</convert></widget>
                 <widget name="attribution" position="10,620" size="500,17" font="Regular;12" transparent="1" foregroundColor="#00ffffff" backgroundColor="#00202020"/>
@@ -3226,6 +3232,7 @@ class RadarScreen(Screen):
         self.animTimer.stop()
         if self._radarPollTimer is not None:
             self._radarPollTimer.stop()
+        RemoveScreen(self)
         Screen.close(self, *args)
 
     def startAnimation(self):
