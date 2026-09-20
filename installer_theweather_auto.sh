@@ -9,19 +9,26 @@ echo "=========================================="
 echo "    Installing TheWeather Plugin...       "
 echo "=========================================="
 
-
 download_file() {
     SUBDIR="$1"
     FILE="$2"
+    TARGET="${TMP_DIR}/${FILE}"
     
     URL_MAIN="https://raw.githubusercontent.com/Caught/TheWeather/main/${SUBDIR}/${FILE}"
     URL_MASTER="https://raw.githubusercontent.com/Caught/TheWeather/master/${SUBDIR}/${FILE}"
     
     echo "-> Downloading ${FILE}..."
-    wget -q "${URL_MAIN}" -O "${TMP_DIR}/${FILE}"
+    rm -f "${TARGET}"
     
-    if [ ! -s "${TMP_DIR}/${FILE}" ]; then
-        wget -q "${URL_MASTER}" -O "${TMP_DIR}/${FILE}"
+    wget -q --no-check-certificate "${URL_MAIN}" -O "${TARGET}"
+    
+    if [ ! -s "${TARGET}" ]; then
+        rm -f "${TARGET}"
+        wget -q --no-check-certificate "${URL_MASTER}" -O "${TARGET}"
+    fi
+
+    if [ ! -s "${TARGET}" ]; then
+        rm -f "${TARGET}"
     fi
 }
 
@@ -39,8 +46,10 @@ if command -v opkg >/dev/null 2>&1; then
         opkg install --force-overwrite --force-reinstall ${TMP_DIR}/${PACKAGE_FILE}
         rm -f ${TMP_DIR}/${PACKAGE_FILE}
         echo "-> Installation completed successfully!"
+        INSTALL_SUCCESS=1
     else
         echo "-> ERROR: Could not download ${PACKAGE_FILE} from GitHub."
+        echo "-> Please verify that the file exists in the repository under /ipk/"
         rm -f ${TMP_DIR}/${PACKAGE_FILE}
         exit 1
     fi
@@ -60,8 +69,10 @@ elif command -v dpkg >/dev/null 2>&1; then
         apt-get install -f -y >/dev/null 2>&1
         rm -f ${TMP_DIR}/${PACKAGE_FILE}
         echo "-> Installation completed successfully!"
+        INSTALL_SUCCESS=1
     else
         echo "-> ERROR: Could not download ${PACKAGE_FILE} from GitHub."
+        echo "-> Please verify that the file exists in the repository under /deb/"
         rm -f ${TMP_DIR}/${PACKAGE_FILE}
         exit 1
     fi
@@ -70,22 +81,26 @@ else
     exit 1
 fi
 
-echo "=========================================="
-printf "Do you want to restart the GUI (Enigma2) now? [y/N]: "
-read RESTART < /dev/tty
+if [ "$INSTALL_SUCCESS" = "1" ]; then
+    echo "=========================================="
+    printf "Do you want to restart the GUI (Enigma2) now? [y/N]: "
+    read RESTART < /dev/tty
 
-case "$RESTART" in 
-  y|Y|yes|YES ) 
-    echo "-> Restarting GUI now..."
-    if command -v init >/dev/null 2>&1; then
-        init 4 && init 3
-    else
-        systemctl restart enigma2
-    fi
-    ;;
-  * ) 
-    echo "-> Restart skipped. Please remember to restart the GUI manually!"
-    ;;
-esac
+    case "$RESTART" in 
+      y|Y|yes|YES ) 
+        echo "-> Restarting GUI now..."
+        if command -v systemctl >/dev/null 2>&1; then
+            systemctl restart enigma2
+        elif command -v init >/dev/null 2>&1; then
+            init 4 && init 3
+        else
+            wget -q -O - http://127.0.0.1/web/powerstate?newstate=3 >/dev/null 2>&1
+        fi
+        ;;
+      * ) 
+        echo "-> Restart skipped. Please remember to restart the GUI manually!"
+        ;;
+    esac
+fi
 
 exit 0
