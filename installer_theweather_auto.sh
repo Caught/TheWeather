@@ -3,7 +3,7 @@
 # Repository: https://github.com/Caught/TheWeather
 
 TMP_DIR="/tmp"
-VERSION="5.0"
+VERSION="5.0.1"
 
 echo "=========================================="
 echo "    Installing TheWeather Plugin...       "
