@@ -1,18 +1,20 @@
-
 msgid ""
 msgstr ""
-"Project-Id-Version: TheWeather v1.3\n"
-"POT-Creation-Date: 2022-01-29 08:51+0100\n"
-"PO-Revision-Date: 2022-01-29 10:27+0100\n"
-"Last-Translator: Dario Croci <spaeleus@croci.org>\n"
-"Language-Team: DREAM-ELITE https://www.dream-elite.net/>\n"
+"Project-Id-Version: hetweer\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2021-11-07 13:57+0200\n"
+"PO-Revision-Date: \n"
+"Last-Translator: \n"
+"Language-Team: \n"
 "Language: it_IT\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"Plural-Forms: nplurals=2; plural=(n != 1);\n"
-"X-Generator: Poedit 3.0.1\n"
-"X-Poedit-Basepath: ../../../../../../../../..\n"
+"Plural-Forms: nplurals=2; plural=(n!=1);\n"
+"X-Poedit-KeywordsList: _;gettext;gettext_noop\n"
+"X-Poedit-Basepath: ../ me/..\n"
+"X-Poedit-SourceCharset: UTF-8\n"
+"X-Generator: Poedit 3.9\n"
 "X-Poedit-SearchPath-0: .\n"
 
 msgid "Mo"
@@ -64,10 +66,10 @@ msgid "Changeable and chance of mist"
 msgstr "Variabile, possibilità di nebbia"
 
 msgid "Changeable cloudy light snowfall"
-msgstr "Variabile/Nuvoloso con lievi nevicate"
+msgstr "Variabile, nuvoloso, leggera nevicata"
 
 msgid "Clear and chance of mist"
-msgstr "Sereno con possibilità di nebbia"
+msgstr "Sereno, possibilità di nebbia"
 
 msgid "Clear night"
 msgstr "Notte serena"
@@ -79,10 +81,10 @@ msgid "Cloudy"
 msgstr "Nuvoloso"
 
 msgid "Cloudy and chance of showers"
-msgstr "Nuvoloso con possibilità di rovesci"
+msgstr "Nuvoloso, possibilità di rovesci"
 
 msgid "Download error: Check spelling."
-msgstr "Errore download: controllare l'ortografia."
+msgstr "Errore di download: controllare l'ortografia."
 
 msgid "Drizzle"
 msgstr "Pioviggine"
@@ -90,14 +92,11 @@ msgstr "Pioviggine"
 msgid "E"
 msgstr "E"
 
-msgid "Enter cityname e.g. london or london_gb or london-2643743"
-msgstr "Inserire il nome della città. Es.: london o london_gb o london-2643743"
-
 msgid "Europe"
 msgstr "Europa"
 
 msgid "Exit"
-msgstr "Uscire"
+msgstr "Esci"
 
 msgid "Favorite Locations"
 msgstr "Località preferite"
@@ -105,32 +104,35 @@ msgstr "Località preferite"
 msgid "Feels Like: "
 msgstr "Percepita: "
 
+msgid "Feels like: "
+msgstr "Percepita: "
+
 msgid "Hail radar"
 msgstr "Radar grandine"
 
 msgid "Heavy clouds"
-msgstr "Molto nuvoloso"
+msgstr "Nuvolosità intensa"
 
 msgid "Heavy clouds  heavy showers"
-msgstr "Molto nuvoloso con forti rovesci"
+msgstr "Nuvolosità intensa, rovesci forti"
 
 msgid "Heavy clouds  thundershowers"
-msgstr "Molto nuvoloso con temporali"
+msgstr "Nuvolosità intensa, rovesci temporaleschi"
 
 msgid "Heavy clouds and heavy snowfall"
-msgstr "Molto nuvoloso con forti nevicate"
+msgstr "Nuvolosità intensa e forti nevicate"
 
 msgid "Heavy clouds light snowfall"
-msgstr "Molto nuvoloso con lievi nevicate"
+msgstr "Nuvolosità intensa, leggera nevicata"
 
 msgid "Heavy clouds showers possible"
-msgstr "Molto nuvoloso con possibili rovesci"
+msgstr "Nuvolosità intensa, rovesci possibili"
 
 msgid "Heavy clouds winter rainfall"
-msgstr "Molto nuvoloso con precipitazioni invernali"
+msgstr "Nuvolosità intensa, pioggia mista a neve"
 
 msgid "Help"
-msgstr "Help"
+msgstr "Aiuto"
 
 msgid "Km/h"
 msgstr "Km/h"
@@ -149,23 +151,6 @@ msgstr "Località -"
 
 msgid "Location:"
 msgstr "Località:"
-
-msgid ""
-Manual adding Citynumbers:\n
-Go to www.bbc.com/weather\n
-Search city and find citycode in the internetlink.\n
-\n
-Go back to \Location +\" and add cityname-number e.g.\n"
-\Dusseldorf-2934246\" or \"Dusseld-2934246\"\n"
-Don't forget the \-\" sign."
-msgstr ""
-Aggiunta manuale dei codici città:\n
-Andare su www.bbc.com/weather\n
-Cercare la città e trovare il codice città nel link internet.\n
-\n
-Tornare a \Località +\" e aggiungere il nome-numero della città, ad es.\n"
-\Dusseldorf-2934246\" o \"Dusseld-2934246\".\n"
-Non dimenticare il segno \-\"."
 
 msgid "Mist radar"
 msgstr "Radar nebbia"
@@ -189,7 +174,7 @@ msgid "Rainfall radar"
 msgstr "Radar precipitazioni"
 
 msgid "WeatherInfo"
-msgstr "InfoMeteo"
+msgstr "Info meteo"
 
 msgid "S"
 msgstr "S"
@@ -204,7 +189,7 @@ msgid "Satellite"
 msgstr "Satellite"
 
 msgid "Showers and chance of thunder"
-msgstr "Rovesci con probabili tuoni"
+msgstr "Rovesci, possibilità di tuono"
 
 msgid "Snow radar"
 msgstr "Radar neve"
@@ -213,22 +198,22 @@ msgid "Sun radar"
 msgstr "Radar sole"
 
 msgid "Sunny / Clear"
-msgstr "Soleggiato/Sereno"
+msgstr "Soleggiato / Sereno"
 
 msgid "Sunny and chance of mist"
-msgstr "Soleggiato con possibilità di nebbia"
+msgstr "Soleggiato, possibilità di nebbia"
 
 msgid "Sunny and chance of showers"
-msgstr "Soleggiato con possibilità di rovesci"
+msgstr "Soleggiato, possibilità di rovesci"
 
 msgid "Sunny and chance of thundershowers"
-msgstr "Soleggiato con possibilità di temporali"
+msgstr "Soleggiato, possibilità di rovesci temporaleschi"
 
 msgid "Sunny few clouds"
-msgstr "Soleggiato, poco nuvoloso"
+msgstr "Soleggiato, poche nuvole"
 
 msgid "Sunpower-UV"
-msgstr "Energia solare-UV"
+msgstr "Indice UV"
 
 msgid "Temperature"
 msgstr "Temperatura"
@@ -237,7 +222,7 @@ msgid "The Netherlands"
 msgstr "Paesi Bassi"
 
 msgid "TheWeather"
-msgstr "IlMeteo"
+msgstr "Il Meteo"
 
 msgid "Thunder radar"
 msgstr "Radar temporali"
@@ -246,10 +231,10 @@ msgid "W"
 msgstr "O"
 
 msgid "Weather forecast-nl"
-msgstr "Previsioni meteo"
+msgstr "Previsioni meteo-NL"
 
 msgid "Wind direction: "
-msgstr "Direzione del vento: "
+msgstr "Direzione vento: "
 
 msgid "Back"
 msgstr "Indietro"
@@ -258,19 +243,19 @@ msgid "Background"
 msgstr "Sfondo"
 
 msgid "Background reset to standard."
-msgstr "Sfondo ripristinato a quello predefinito."
+msgstr "Sfondo ripristinato allo standard."
 
 msgid "Choose 2nd location"
-msgstr "Scegli seconda località"
+msgstr "Scegli 2ª località"
 
 msgid "Choose 2nd location:"
-msgstr "Scegli seconda località:"
+msgstr "Scegli 2ª località:"
 
 msgid "Choose background:"
 msgstr "Scegli sfondo:"
 
 msgid "City not found. Press YELLOW to change."
-msgstr "Città non trovata. Premi GIALLO per modificare."
+msgstr "Città non trovata. Premere GIALLO per cambiare."
 
 msgid "Compare Locations"
 msgstr "Confronta località"
@@ -279,10 +264,10 @@ msgid "Data error"
 msgstr "Errore dati"
 
 msgid "Download error: No response try again"
-msgstr "Errore download: nessuna risposta, riprovare"
+msgstr "Errore di download: nessuna risposta, riprovare"
 
 msgid "Error fetching data."
-msgstr "Errore nel recupero dei dati."
+msgstr "Errore durante il recupero dei dati."
 
 msgid "Error loading"
 msgstr "Errore di caricamento"
@@ -300,13 +285,17 @@ msgid "h"
 msgstr "h"
 
 msgid "Heavy rain!"
-msgstr "Pioggia forte!"
+msgstr "Pioggia intensa!"
 
 msgid "Heavy storm!"
 msgstr "Forte tempesta!"
 
-msgid "Icon pack changed.\nThe plugin will restart..."
-msgstr "Pacchetto icone modificato.\nIl plugin si riavvierà..."
+msgid ""
+"Icon pack changed.\n"
+"The plugin will restart..."
+msgstr ""
+"Pacchetto icone modificato.\n"
+"Il plugin verrà riavviato..."
 
 msgid "Loading background image, please wait..."
 msgstr "Caricamento immagine di sfondo, attendere..."
@@ -315,19 +304,23 @@ msgid "Loading..."
 msgstr "Caricamento..."
 
 msgid "No 2nd location"
-msgstr "Nessuna seconda località"
+msgstr "Nessuna 2ª località"
 
 msgid "No info"
 msgstr "Nessuna informazione"
 
-msgid "No saved cities found.\nFirst add cities via the location screen."
-msgstr "Nessuna città salvata trovata.\nAggiungi prima le città tramite la schermata delle località."
+msgid ""
+"No saved cities found.\n"
+"First add cities via the location screen."
+msgstr ""
+"Nessuna città salvata trovata.\n"
+"Aggiungere prima le città dalla schermata località."
 
 msgid "Not found"
 msgstr "Non trovato"
 
 msgid "Press YELLOW to choose a 2nd location."
-msgstr "Premi GIALLO per scegliere una seconda località."
+msgstr "Premere GIALLO per scegliere una 2ª località."
 
 msgid "Rain: "
 msgstr "Pioggia: "
@@ -339,16 +332,16 @@ msgid "Settings"
 msgstr "Impostazioni"
 
 msgid "Severe cold!"
-msgstr "Freddo intenso!"
+msgstr "Freddo rigido!"
 
 msgid "Standard"
-msgstr "Predefinito"
+msgstr "Standard"
 
 msgid "Standard (iconpack)"
-msgstr "Predefinito (pacchetto icone)"
+msgstr "Standard (pacchetto icone)"
 
 msgid "Standard Icons"
-msgstr "Icone predefinite"
+msgstr "Icone standard"
 
 msgid "Strong wind!"
 msgstr "Vento forte!"
@@ -357,16 +350,37 @@ msgid "Sun: "
 msgstr "Sole: "
 
 msgid "Very heavy rain!"
-msgstr "Pioggia molto forte!"
+msgstr "Pioggia molto intensa!"
 
 msgid "Warm weather!"
-msgstr "Clima caldo!"
+msgstr "Tempo caldo!"
 
-msgid "Whoops!\nSlow or no Internet connection\nPlease try again"
-msgstr "Oops!\nConnessione Internet lenta o assente\nRiprova più tardi"
+msgid ""
+"Whoops!\n"
+"Slow or no Internet connection\n"
+"Please try again"
+msgstr ""
+"Ops!\n"
+"Connessione Internet lenta o assente.\n"
+"Riprova"
 
 msgid "Wind: "
 msgstr "Vento: "
+
+msgid "ON"
+msgstr "ON"
+
+msgid "OFF"
+msgstr "OFF"
+
+msgid "Loading radar..."
+msgstr "Caricamento radar..."
+
+msgid "Please wait..."
+msgstr "Attendere..."
+
+msgid "Map zoom: %s"
+msgstr "Zoom mappa: %s"
 
 msgid ""
 "Tip!\n"
@@ -378,3 +392,45 @@ msgid ""
 "\n"
 "Press OK here to toggle the temperature overlay: %s"
 msgstr ""
+"Consiglio!\n"
+"Premere il pulsante Giallo nascosto nel menu principale per aprire il RainRadar.\n"
+"\n"
+"Premere il pulsante Verde nascosto nel menu principale per cambiare l'intervallo orario.\n"
+"\n"
+"Premere il pulsante Blu nascosto nel menu principale per confrontare due città.\n"
+"\n"
+"Premere OK qui per attivare/disattivare la sovrapposizione della temperatura: %s"
+
+msgid ""
+"Tip!\n"
+"Press the hidden Yellow button in the main menu to open the RainRadar.\n"
+"\n"
+"Press the hidden Green button in the main menu to change the hour interval.\n"
+"\n"
+"Press the hidden Blue button in the main menu to compare two cities.\n"
+"\n"
+"Press OK here to cycle the overlay: %s"
+msgstr ""
+"Consiglio!\n"
+"Premere il pulsante Giallo nascosto nel menu principale per aprire il RainRadar.\n"
+"\n"
+"Premere il pulsante Verde nascosto nel menu principale per cambiare l'intervallo orario.\n"
+"\n"
+"Premere il pulsante Blu nascosto nel menu principale per confrontare due città.\n"
+"\n"
+"Premere OK qui per scorrere la sovrapposizione: %s"
+
+msgid "TEMP"
+msgstr "TEMP"
+
+msgid "TEMP+RAIN"
+msgstr "TEMP+PIOGGIA"
+
+msgid "Rain in ~%d min"
+msgstr "Pioggia tra ~%d min"
+
+msgid "Rain stops in ~%d min"
+msgstr "La pioggia termina tra ~%d min"
+
+msgid "Rain (2h+)"
+msgstr "Pioggia (2h+)"

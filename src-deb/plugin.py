@@ -1,4 +1,4 @@
-#v.4.5
+#v.5.0
 import os
 import sys
 import time
@@ -8,6 +8,7 @@ import shutil
 import gettext
 import datetime
 import threading
+import zipfile
 from enigma import gRGB
 from enigma import eTimer
 from enigma import ePoint
@@ -24,6 +25,7 @@ from Components.Language import language
 from Screens.MessageBox import MessageBox
 from Screens.InfoBar import InfoBar
 from Plugins.Plugin import PluginDescriptor
+from Screens.Standby import TryQuitMainloop
 from Components.Pixmap import Pixmap, MovingPixmap
 from Screens.VirtualKeyBoard import VirtualKeyBoard
 from Components.Sources.StaticText import StaticText
@@ -32,8 +34,6 @@ from Components.MultiContent import MultiContentEntryText
 from Components.ActionMap import ActionMap, HelpableActionMap
 from Tools.Directories import resolveFilename, SCOPE_CONFIG, SCOPE_PLUGINS, SCOPE_LANGUAGE
 from enigma import eListboxPythonMultiContent, loadPNG, gFont, RT_HALIGN_LEFT, RT_HALIGN_RIGHT, RT_HALIGN_CENTER, RT_VALIGN_CENTER
-
-print("[TheWeather] loadPNG doc: %r" % (loadPNG.__doc__,))
 
 # add Lululla
 PY3 = False
@@ -73,7 +73,7 @@ def getCoordsFromEntry(value):
             return None, None
     return None, None
 
-version = '4.5'
+version = '5.0'
 PluginLanguageDomain = "FileBrowser"
 PluginLanguagePath = "Extensions/TheWeather/locale/"
 OAWeather = resolveFilename(SCOPE_PLUGINS, "Extensions/{}".format('OAWeather'))
@@ -86,6 +86,8 @@ gettext.bindtextdomain("TheWeather", "%s%s" % (resolveFilename(SCOPE_PLUGINS), "
 icoonpath = "Images"
 SHARED_PACK = "Images"
 backgroundpath = ""
+backgroundAutoWeather = False
+holidayBackgroundsEnabled = True
 CFG_DIR = "/etc/enigma2/TheWeather"
 
 _weatherCache = {}
@@ -117,6 +119,8 @@ screens = []
 _restartTimer = None
 _restartTimerConn = None
 _restartInProgress = False
+_updateRestartTimer = None
+_updateRestartTimerConn = None
 _lastExitTime = [0.0]
 _overlayLastCheck = 0.0
 _overlayScreen = None
@@ -197,6 +201,12 @@ def _overlayCheckVisibility():
 
 def _doIconpackRestart(session):
     main(session)
+
+def _scheduleRestart(session):
+    global _updateRestartTimer, _updateRestartTimerConn
+    _updateRestartTimer = eTimer()
+    _updateRestartTimerConn = safeTimerCallback(_updateRestartTimer, lambda: session.open(TryQuitMainloop, 3))
+    _updateRestartTimer.start(50, True)
 
 def _updateOverlayFromWeatherData():
     global _overlayScreen
@@ -519,6 +529,99 @@ def icontotext(icon):
     return text
 
 
+def iconToBgCategory(icon):
+    icon = (icon or "").strip().lower()
+    base = icon[0] if icon else ""
+    mapping = {
+        "a": "sunny", "j": "sunny",
+        "b": "cloudy", "c": "cloudy", "r": "cloudy",
+        "d": "mist", "n": "mist",
+        "f": "rain", "m": "rain", "q": "rain", "w": "rain",
+        "g": "thunder", "s": "thunder",
+        "t": "snow", "u": "snow", "v": "snow",
+    }
+    return mapping.get(base, "")
+
+
+AUTO_BG_DIR = "/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/backgrounds/auto/"
+AUTO_BG_EXTENSIONS = (".jpg", ".jpeg", ".png", ".bmp")
+AUTO_BG_ZIP_URL = "https://github.com/Caught/TheWeather/releases/download/v4.5/backgrounds_auto.zip"
+PLUGIN_DIR = "/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/"
+VERSION_URL = "https://raw.githubusercontent.com/Caught/TheWeather/main/version.txt"
+PLUGIN_ZIP_URL = "https://github.com/Caught/TheWeather/releases/latest/download/PLUGIN_ZIP_URL.zip"
+UPDATE_EXCLUDE_PREFIXES = ("backgrounds/",)
+UPDATE_CHECK_INTERVAL = 10 * 60 #24 * 3600 # 1x a day check
+UPDATE_CHECK_CFG = CFG_DIR + "/lastupdatecheck.cfg"
+
+def _versionTuple(v):
+    try:
+        return tuple(int(x) for x in v.strip().split("."))
+    except Exception:
+        return (0,)
+
+def _shouldCheckForUpdate():
+    try:
+        with open(UPDATE_CHECK_CFG, "r") as f:
+            last = float(f.read().strip())
+        return (time.time() - last) >= UPDATE_CHECK_INTERVAL
+    except Exception:
+        return True
+
+def _markUpdateChecked():
+    try:
+        with open(UPDATE_CHECK_CFG, "w") as f:
+            f.write(str(time.time()))
+    except Exception as e:
+        print("[TheWeather] _markUpdateChecked error:", e)
+
+def findAutoBgFile(category):
+    if not category:
+        return None
+    for ext in AUTO_BG_EXTENSIONS:
+        pad = os.path.join(AUTO_BG_DIR, category + ext)
+        if os.path.exists(pad):
+            return pad
+    return None
+
+HOLIDAY_BACKGROUNDS = [
+    (10, 25, 10, 31, "halloween"),
+    (12, 20, 12, 26, "christmas"),
+    (12, 28, 1, 2, "newyear"),
+    (3, 26, 3, 29, "easter"),      
+]
+
+def getHolidayBgCategory():
+    global holidayBackgroundsEnabled
+    if not holidayBackgroundsEnabled:
+        return None
+    now = time.localtime()
+    month, day = now.tm_mon, now.tm_mday
+    for sm, sd, em, ed, cat in HOLIDAY_BACKGROUNDS:
+        if sm == em:
+            if month == sm and sd <= day <= ed:   # <-- month == sm toegevoegd
+                return cat
+        elif (month == sm and day >= sd) or (month == em and day <= ed) or (sm < month < em):
+            return cat
+    return None
+
+def getAutoWeatherBackground():
+    global weatherData
+    defaultBg = "/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/" + SHARED_PACK + "/backgroundhd.png"
+
+    holidayCat = getHolidayBgCategory()
+    if holidayCat:
+        holidayBg = findAutoBgFile(holidayCat)
+        if holidayBg:
+            return holidayBg
+
+    try:
+        icon = weatherData["days"][0]["hours"][0]["iconcode"]
+    except Exception:
+        return defaultBg
+    category = iconToBgCategory(icon)
+    bgfile = findAutoBgFile(category)
+    return bgfile if bgfile else defaultBg
+
 def winddirtext(dirtext):
     text = ""
     if dirtext == "N":
@@ -699,7 +802,7 @@ class sevendays(Screen):
                     <widget render="Label" source="smallday2""" + str(day) + """" position=\"""" + str(138 + (248 * day)) + """,461" size="135,40" zPosition="3" valign="center" halign="left" font="Regular;34" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
                     <widget render="Label" source="maxtemp2""" + str(day) + """" position=\"""" + str(130 + (248 * day)) + """,571" size="90,54" zPosition="3" font="Regular;48" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2" />
                     <widget render="Label" source="minitemp2""" + str(day) + """" position=\"""" + str(240 + (248 * day)) + """,587" size="90,36" zPosition="3" valign="center" halign="left" font="Regular;28" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <widget render="Label" source="weertype2""" + str(day) + """" position=\"""" + str(99 + (248 * day)) + """,617" size="220,86" zPosition="3" valign="center" halign="center" font="Regular;24" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget render="Label" source="weertype2""" + str(day) + """" position=\"""" + str(104 + (248 * day)) + """,617" size="220,86" zPosition="3" valign="center" halign="center" font="Regular;24" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
                     <widget render="Label" source="sunriselab" position="625,362" size="200,40" zPosition="3" font="Regular;28" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
                     <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/iconhd/sunupdownhd.png" zPosition="3" position="650,295" size="120,60" alphatest="blend"/>"""
                 dataUrr = dataDagen[day]["hours"]
@@ -759,6 +862,14 @@ class sevendays(Screen):
                     <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/buttonx.png" position="1604,46" size="54,54" zPosition="3" alphatest="blend"/>
                     <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/menubutton.png" position="1423,46" size="90,54" zPosition="3" alphatest="blend"/>
                     <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/okbutton.png" position="1531,46" size="54,54" zPosition="3" alphatest="blend"/>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/red34.png" position="98,1046" size="26,26" alphatest="blend"/>
+                    <widget name="key_red" position="132,1040" size="320,36" zPosition="3" font="Regular;32" halign="left" valign="center" foregroundColor="#00ffffff" backgroundColor="#00202020" shadowColor="black" shadowOffset="-2,-2" transparent="1"/>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/green34.png" position="530,1046" size="26,26" alphatest="blend"/>
+                    <widget name="key_green" position="564,1040" size="320,36" zPosition="3" font="Regular;32" halign="left" valign="center" foregroundColor="#00ffffff" backgroundColor="#00202020" shadowColor="black" shadowOffset="-2,-2" transparent="1"/>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/yellow34.png" position="962,1046" size="26,26" alphatest="blend"/>
+                    <widget name="key_yellow" position="996,1040" size="320,36" zPosition="3" font="Regular;32" halign="left" valign="center" foregroundColor="#00ffffff" backgroundColor="#00202020" shadowColor="black" shadowOffset="-2,-2" transparent="1"/>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/blue34.png" position="1394,1046" size="26,26" alphatest="blend"/>
+                    <widget name="key_blue" position="1428,1040" size="320,36" zPosition="3" font="Regular;32" halign="left" valign="center" foregroundColor="#00ffffff" backgroundColor="#00202020" shadowColor="black" shadowOffset="-2,-2" transparent="1"/>
                     </screen>"""
         else:
             for day in range(0, 7):
@@ -800,7 +911,7 @@ class sevendays(Screen):
                     <widget render="Label" source="smallday2""" + str(day) + """" position=\"""" + str(92 + (165 * day)) + """,302" size="90,24" zPosition="3" valign="center" halign="left" font="Regular;22" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
                     <widget render="Label" source="maxtemp2""" + str(day) + """" position=\"""" + str(92 + (165 * day)) + """,376" size="60,36" zPosition="3" font="Regular;32" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2" />
                     <widget render="Label" source="minitemp2""" + str(day) + """" position=\"""" + str(160 + (165 * day)) + """,389" size="32,22" zPosition="3" valign="center" halign="left" font="Regular;18" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
-                    <widget render="Label" source="weertype2""" + str(day) + """" position=\"""" + str(69 + (165 * day)) + """,410" size="138,54" zPosition="3" valign="center" halign="center" font="Regular;16" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget render="Label" source="weertype2""" + str(day) + """" position=\"""" + str(75 + (165 * day)) + """,410" size="138,54" zPosition="3" valign="center" halign="center" font="Regular;16" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
                     <widget render="Label" source="sunriselab" position="416,248" size="200,40" zPosition="3" font="Regular;18" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
                     <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + icoonpath + """/iconhd/sunupdownhd.png" zPosition="3" position="426,206" size="80,40" scale="1" alphatest="blend"/>"""
                 dataUrr = dataDagen[day]["hours"]
@@ -845,7 +956,7 @@ class sevendays(Screen):
             skin = """
                     <screen name="sevenday" title="seven" flags="wfNoBorder" position="center,center" size="1280,720">
                     <widget name="bgpic" position="0,0" size="1280,720" zPosition="-1" alphatest="blend"/>
-                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/backgroundhd.png" position="center,center" size="1280,720" scale="1" zPosition="0" alphatest="blend"/>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/backgroundsd.png" position="center,center" size="1280,720" zPosition="0" alphatest="blend"/>
                     <widget source="global.CurrentTime" render="Label" position="1091,12" size="150,55" transparent="1" zPosition="1" font="Regular;24" foregroundColor="#00ffffff" backgroundColor="#00202020" valign="center" halign="right"><convert type="ClockToText">Format:%-H:%M</convert></widget>
                     <widget source="global.CurrentTime" render="Label" position="941,32" size="300,55" transparent="1" zPosition="1" font="Regular;16" foregroundColor="#00ffffff" backgroundColor="#00202020" valign="center" halign="right"><convert type="ClockToText">Format:%a %d/%m/%y</convert></widget>
                     <widget name="yellowdot" position="184,307" size="24,24" pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/yeldot.png" zPosition="3" alphatest="blend"/>
@@ -860,6 +971,14 @@ class sevendays(Screen):
                     <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/buttonsdx.png" position="1070,29" size="36,36" zPosition="3" alphatest="blend"/>
                     <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/menubuttonsd.png" position="949,29" size="60,36" zPosition="3" alphatest="blend"/>
                     <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/okbuttonsd.png" position="1021,29" size="36,36" zPosition="3" alphatest="blend"/>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/red18.png" position="65,698" size="18,18" alphatest="blend"/>
+                    <widget name="key_red" position="88,694" size="270,24" zPosition="3" font="Regular;22" halign="left" valign="center" foregroundColor="#00ffffff" backgroundColor="#00202020" shadowColor="black" shadowOffset="-2,-2" transparent="1"/>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/green18.png" position="353,698" size="18,18" alphatest="blend"/>
+                    <widget name="key_green" position="376,694" size="270,24" zPosition="3" font="Regular;22" halign="left" valign="center" foregroundColor="#00ffffff" backgroundColor="#00202020" shadowColor="black" shadowOffset="-2,-2" transparent="1"/>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/yellow18.png" position="641,698" size="18,18" alphatest="blend"/>
+                    <widget name="key_yellow" position="664,694" size="270,24" zPosition="3" font="Regular;22" halign="left" valign="center" foregroundColor="#00ffffff" backgroundColor="#00202020" shadowColor="black" shadowOffset="-2,-2" transparent="1"/>
+                    <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/blue18.png" position="929,698" size="18,18" alphatest="blend"/>
+                    <widget name="key_blue" position="952,694" size="270,24" zPosition="3" font="Regular;22" halign="left" valign="center" foregroundColor="#00ffffff" backgroundColor="#00202020" shadowColor="black" shadowOffset="-2,-2" transparent="1"/>
                     </screen>"""
 
         self["city1"] = StaticText()
@@ -873,6 +992,10 @@ class sevendays(Screen):
         self["weatheralert1"] = Label("")
         self["yellowdot"] = MovingPixmap()
         self["bgpic"] = Pixmap()
+        self["key_red"] = Label(_("Exit"))
+        self["key_green"] = Label(_("Hour step"))
+        self["key_yellow"] = Label(_("Radar"))
+        self["key_blue"] = Label(_("Compare"))
         try:
             self.picload = ePicLoad()
             self._picload_conn = safeSignalConnect(self.picload.PictureData, self.bgPictureLoaded)
@@ -1099,7 +1222,6 @@ class sevendays(Screen):
                 self["dayIcon" + str(self.selected) + str(perUurUpdate)].show()
                 self["vlakuur" + str(perUurUpdate)].show()
                 self["sunicon" + str(perUurUpdate)].show()
-                print("[TheWeather] DEBUG uur=%s iconcode=%s" % (slotHours[perUurUpdate].get("hour"), slotHours[perUurUpdate].get("iconcode")))
                 iconpath = "/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/" + icoonpath + "/iconhd/" + slotHours[perUurUpdate]["iconcode"] + ".png"
                                 
                 iconWidget = self["dayIcon" + str(self.selected) + str(perUurUpdate)]
@@ -1171,15 +1293,14 @@ class sevendays(Screen):
         self.session.open(fourteen)
 
     def loadBackground(self):
-        global backgroundpath, icoonpath
+        global backgroundpath, icoonpath, backgroundAutoWeather
         if not hasattr(self, 'picload') or self.picload is None:
             return
-        if backgroundpath and os.path.exists(backgroundpath):
+        if backgroundAutoWeather:
+            bgfile = getAutoWeatherBackground()
+        elif backgroundpath and os.path.exists(backgroundpath):
             bgfile = backgroundpath
         else:
-            if sz_w > 1800:
-                bgfile = "/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/" + SHARED_PACK + "/backgroundhd.png"
-            else:
                 bgfile = "/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/" + SHARED_PACK + "/backgroundhd.png"
         print("[TheWeather] loadBackground: START decode", bgfile)
         try:
@@ -1692,7 +1813,6 @@ class CitySearchKeyBoard(VirtualKeyBoard):
         except Exception as e:
             print("[TheWeather] updateSuggestions error:", e)
             self.searchResults = []
-        print("[TheWeather] DEBUG first search result:", self.searchResults[0] if self.searchResults else "empty")
         names = [r.get("name", "") + " (" + r.get("countrycode", "") + ")" for r in self.searchResults[:6]]
         text = "\n".join(names)
         if not PY3 and isinstance(text, unicode):
@@ -1752,7 +1872,8 @@ class localcityscreen(Screen):
         Screen.__init__(self, session)
         self.skin = skin
         AddNewScreen(self)
-        
+        self.onClose.append(lambda: RemoveScreen(self))
+
         self["key_red"] = Label(_("Exit"))
         self["key_green"] = Label(_("Location +"))
         self["key_yellow"] = Label(_("Location -"))
@@ -1991,13 +2112,13 @@ class infoscreen(Screen):
                     <widget source="session.VideoPicture" render="Pig" position="30,160" size="720,405" backgroundColor="#ff000000" zPosition="1"/>
                     <widget source="session.CurrentService" render="Label" position="30,125" size="720,36" zPosition="1" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" font="Regular;28" noWrap="1" valign="center" halign="center"><convert type="ServiceName">Name</convert></widget>
                     <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/red34.png" position="192,1022" size="34,34" alphatest="blend"/>
-                    <widget name="key_red" position="242,1015" size="370,48" zPosition="1" font="Regular;40" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget name="key_red" position="242,1015" size="370,100" zPosition="1" font="Regular;40" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
                     <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/green34.png" position="628,1022" size="34,34" alphatest="blend"/>
-                    <widget name="key_green" position="678,1015" size="370,48" zPosition="1" font="Regular;40" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget name="key_green" position="678,1015" size="370,100" zPosition="1" font="Regular;40" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
                     <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/yellow34.png" position="1064,1022" size="34,34" alphatest="blend"/>
-                    <widget name="key_yellow" position="1114,1015" size="370,48" zPosition="1" font="Regular;40" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget name="key_yellow" position="1114,1015" size="370,100" zPosition="1" font="Regular;40" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
                     <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/blue34.png" position="1500,1022" size="34,34" alphatest="blend"/>
-                    <widget name="key_blue" position="1550,1015" size="370,48" zPosition="1" font="Regular;40" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                    <widget name="key_blue" position="1550,1015" size="370,100" zPosition="1" font="Regular;40" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
                     <widget name="helpinfo" position="900,186" size="800,600" valign="top" halign="left" zPosition="1" font="Regular;36" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
                     <widget name="version" position="1290,945" size="600,42" valign="center" halign="right" zPosition="1" font="Regular;36" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
                     </screen>"""
@@ -2035,18 +2156,56 @@ class infoscreen(Screen):
         self["actions"] = ActionMap(["WizardActions"], {"back": self.exit, "ok": self.toggleOverlay}, -2)
         self["ColorActions"] = HelpableActionMap(self, "ColorActions", {"red": self.exit, "green": self.default, "yellow": self.extra, "blue": self.openBackgroundPicker}, -2)
         self["version"] = Label("TheWeather_v.%s" % version)
-        
+
         AddNewScreen(self)
-        
+        self.onClose.append(lambda: RemoveScreen(self))
+
+        self._closed = False
+        self._updateCheckThread = None
+        self._updateCheckResult = None
+        self._updateCheckTimer = eTimer()
+        self._updateCheckTimerConn = safeTimerCallback(self._updateCheckTimer, self._pollUpdateCheck)
+        if _shouldCheckForUpdate():
+            self._updateCheckThread = threading.Thread(target=self._updateCheckWorker)
+            self._updateCheckThread.daemon = True
+            self._updateCheckThread.start()
+            self._updateCheckTimer.start(300, False)
+
         global _overlayInfoscreenOpen
         _overlayInfoscreenOpen = True
         _overlayCheckVisibility()
 
+    def _updateCheckWorker(self):
+        try:
+            req = urllib2.Request(VERSION_URL, headers={'User-Agent': 'Mozilla/5.0'})
+            remote = urlopen(req, timeout=15).read()
+            self._updateCheckResult = remote.decode("utf-8").strip() if PY3 else remote.strip()
+        except Exception as e:
+            self._updateCheckResult = None
+            print("[TheWeather] background update check failed:", e)
+    
+    def _pollUpdateCheck(self):
+        if self._updateCheckThread is not None and self._updateCheckThread.is_alive():
+            return
+        self._updateCheckTimer.stop()
+        _markUpdateChecked()
+        if self._closed:
+            return
+        remoteVersion = self._updateCheckResult
+        if remoteVersion and _versionTuple(remoteVersion) > _versionTuple(version):
+            self.session.openWithCallback(
+                lambda ret: doPluginUpdate(self.session) if ret else None,
+                MessageBox,
+                _("Update available: %s (current: %s)\nDownload and install and reboot!! now?") % (remoteVersion, version),
+                MessageBox.TYPE_YESNO
+            )
+    
     def exit(self):
         if not _debounced():
             return
         global _overlayInfoscreenOpen
         _overlayInfoscreenOpen = False
+        self._closed = True
         RemoveScreen(self)
         try:
             _overlayCheckVisibility()
@@ -2487,6 +2646,8 @@ class BackgroundPickerScreen(Screen):
                 <widget name="key_green" position="678,1015" size="600,48" zPosition="1" font="Regular;40" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
                 <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/yellow34.png" position="1200,1022" size="34,34" alphatest="blend"/>
                 <widget name="key_yellow" position="1250,1015" size="600,48" zPosition="1" font="Regular;40" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/blue34.png" position="1500,1022" size="34,34" alphatest="blend"/>
+                <widget name="key_blue" position="1550,1015" size="370,48" zPosition="1" font="Regular;40" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
                 <widget name="backgr" position="85,45" size="1085,55" valign="center" halign="left" zPosition="1" font="Regular;36" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
                 </screen>"""
         else:
@@ -2502,6 +2663,8 @@ class BackgroundPickerScreen(Screen):
                 <widget name="key_red" position="185,663" size="220,32" zPosition="1" font="Regular;24" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
                 <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/green26.png" position="420,663" size="26,26" alphatest="blend"/>
                 <widget name="key_green" position="460,663" size="220,32" zPosition="1" font="Regular;24" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
+                <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/blue26.png" position="970,663" size="26,26" alphatest="blend"/>
+                <widget name="key_blue" position="1005,663" size="260,32" zPosition="1" font="Regular;24" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
                 <ePixmap pixmap="/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/""" + SHARED_PACK + """/buttons/yellow26.png" position="700,663" size="26,26" alphatest="blend"/>
                 <widget name="key_yellow" position="735,663" size="280,32" zPosition="1" font="Regular;24" halign="left" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
                 <widget name="backgr" position="57,30" size="723,37" valign="center" halign="left" zPosition="1" font="Regular;24" foregroundColor="#00ffffff" backgroundColor="#00202020" transparent="1" shadowColor="black" shadowOffset="-2,-2"/>
@@ -2516,10 +2679,19 @@ class BackgroundPickerScreen(Screen):
                     self._bestanden.append(os.path.join(self.BG_DIR, f))
 
         self._bestanden.insert(0, "")
+        self._bestanden.insert(1, "__AUTO__")
+        self._bestanden.insert(2, "__DOWNLOAD__")
 
         self.res = []
         for pad in self._bestanden:
-            naam = _("Standard") if pad == "" else os.path.basename(pad)
+            if pad == "":
+                naam = _("Standard")
+            elif pad == "__AUTO__":
+                naam = _("Auto (weather-based)")
+            elif pad == "__DOWNLOAD__":
+                naam = _("Download extra backgrounds")
+            else:
+                naam = os.path.basename(pad)
             if sz_w > 1800:
                 self.res.append([pad, MultiContentEntryText(pos=(0, 0), size=(860, 63), font=0, flags=RT_HALIGN_LEFT, text=naam, color_sel=0x00D2D226)])
             else:
@@ -2538,6 +2710,8 @@ class BackgroundPickerScreen(Screen):
         self["key_red"] = Label(_("Exit"))
         self["key_green"] = Label(_("Select"))
         self["key_yellow"] = Label(_("Standard"))
+        global holidayBackgroundsEnabled
+        self["key_blue"] = Label(_("Holidays: On") if holidayBackgroundsEnabled else _("Holidays: Off"))
         self["preview"] = Pixmap()
 
         self["actions"] = ActionMap(["WizardActions", "MenuActions"], {
@@ -2551,6 +2725,7 @@ class BackgroundPickerScreen(Screen):
             "red": self.annuleer,
             "green": self.selecteer,
             "yellow": self.resetStandaard,
+            "blue": self.toggleHolidays,
         }, -1)
 
         self.picload = ePicLoad()
@@ -2560,8 +2735,11 @@ class BackgroundPickerScreen(Screen):
         self._previewTimer_conn = safeTimerCallback(self.previewTimer, self.laadPreview)
         self.previewTimer.start(400, True)
 
-        global backgroundpath
-        if backgroundpath in self._bestanden:
+        global backgroundpath, backgroundAutoWeather
+        if backgroundAutoWeather and "__AUTO__" in self._bestanden:
+            idx = self._bestanden.index("__AUTO__")
+            self["list"].moveToIndex(idx)
+        elif backgroundpath in self._bestanden:
             idx = self._bestanden.index(backgroundpath)
             self["list"].moveToIndex(idx)
 
@@ -2595,6 +2773,10 @@ class BackgroundPickerScreen(Screen):
     def laadPreview(self):
         idx = self["list"].getSelectedIndex()
         pad = self._bestanden[idx] if idx < len(self._bestanden) else ""
+        if pad == "__AUTO__":
+            pad = getAutoWeatherBackground()
+        elif pad == "__DOWNLOAD__":
+            pad = ""
         if not pad:
             if sz_w > 1800:
                 pad = "/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/" + SHARED_PACK + "/backgroundhd.png"
@@ -2633,34 +2815,156 @@ class BackgroundPickerScreen(Screen):
                 except Exception as e:
                     print("BackgroundPicker: kon tussenliggend scherm niet sluiten:", e)
 
+    def _hasAutoBackgrounds(self):
+        if not os.path.isdir(AUTO_BG_DIR):
+            return False
+        for f in os.listdir(AUTO_BG_DIR):
+            if f.lower().endswith(AUTO_BG_EXTENSIONS):
+                return True
+        return False
+    
     def selecteer(self):
-        global backgroundpath
+        global backgroundpath, backgroundAutoWeather
         idx = self["list"].getSelectedIndex()
         pad = self._bestanden[idx] if idx < len(self._bestanden) else ""
-        backgroundpath = pad
+        if pad == "__DOWNLOAD__":
+            self.downloadAutoBackgrounds()
+            return
+        if pad == "__AUTO__":
+            if not self._hasAutoBackgrounds():
+                self.session.open(
+                    MessageBox,
+                    _("No automatic backgrounds found.\nPlease use 'Download extra backgrounds' first."),
+                    MessageBox.TYPE_WARNING,
+                    timeout=5
+                )
+                return
+            backgroundAutoWeather = True
+            backgroundpath = ""
+            cfgval = "AUTO"
+        else:
+            backgroundAutoWeather = False
+            backgroundpath = pad
+            cfgval = pad
         try:
             with open(self.BG_CFG, "w") as f:
-                f.write(pad)
+                f.write(cfgval)
         except Exception as e:
             print("BackgroundPicker: save failed:", e)
         self._backToSevendays()
-        self.session.open(MessageBox, _("Loading background image, please wait..."), MessageBox.TYPE_INFO, timeout=4)
+        self.session.openWithCallback(self._afterSaveMessage, MessageBox, _("Loading background image, please wait..."), MessageBox.TYPE_INFO, timeout=4)
+
+    def _afterSaveMessage(self, *args):
         self.close(True)
 
+    def downloadAutoBackgrounds(self):
+        self.session.open(MessageBox, _("Downloading backgrounds, please wait..."), MessageBox.TYPE_INFO, timeout=3)
+        try:
+            if not os.path.exists(AUTO_BG_DIR):
+                os.makedirs(AUTO_BG_DIR)
+            if not os.path.exists(self.BG_DIR):
+                os.makedirs(self.BG_DIR)
+            tmpZip = "/tmp/theweather_bgauto.zip"
+            req = urllib2.Request(AUTO_BG_ZIP_URL, headers={'User-Agent': 'Mozilla/5.0'})
+            handler = urllib2.urlopen(req, timeout=20)
+            with open(tmpZip, "wb") as f:
+                f.write(handler.read())
+            with zipfile.ZipFile(tmpZip, "r") as z:
+                for entry in z.namelist():
+                    if entry.endswith("/"):
+                        continue
+                    naam = os.path.basename(entry)
+                    if not naam:
+                        continue
+                    if entry.startswith("auto/"):
+                        doel = os.path.join(AUTO_BG_DIR, naam)
+                    elif entry.startswith("extra/"):
+                        doel = os.path.join(self.BG_DIR, naam)
+                    else:
+                        continue
+                    with z.open(entry) as bron, open(doel, "wb") as uit:
+                        shutil.copyfileobj(bron, uit)
+            os.remove(tmpZip)
+            self.session.openWithCallback(self._afterSaveMessage, MessageBox, _("Backgrounds downloaded successfully."), MessageBox.TYPE_INFO, timeout=3)
+        except Exception as e:
+            print("[TheWeather] downloadAutoBackgrounds error:", e)
+            self.session.open(MessageBox, _("Download failed:\n%s") % str(e), MessageBox.TYPE_ERROR, timeout=5)
+
     def resetStandaard(self):
-        global backgroundpath
+        global backgroundpath, backgroundAutoWeather
         backgroundpath = ""
+        backgroundAutoWeather = False
         try:
             with open(self.BG_CFG, "w") as f:
                 f.write("")
         except Exception as e:
             print("BackgroundPicker: reset failed:", e)
         self._backToSevendays()
-        self.session.open(MessageBox, _("Background reset to standard."), MessageBox.TYPE_INFO, timeout=2)
-        self.close(True)
+        self.session.openWithCallback(self._afterSaveMessage, MessageBox, _("Background reset to standard."), MessageBox.TYPE_INFO, timeout=2)
+
+    def toggleHolidays(self):
+        global holidayBackgroundsEnabled
+        holidayBackgroundsEnabled = not holidayBackgroundsEnabled
+        try:
+            with open(CFG_DIR + "/TheWeather_holidays.cfg", "w") as f:
+                f.write("1" if holidayBackgroundsEnabled else "0")
+        except Exception as e:
+            print("BackgroundPicker: holiday toggle save failed:", e)
+        self["key_blue"].setText(_("Holidays: On") if holidayBackgroundsEnabled else _("Holidays: Off"))
+        self.previewTimer.start(400, True)
 
     def annuleer(self):
         self.close(False)
+
+def checkForPluginUpdate(session):
+    try:
+        req = urllib2.Request(VERSION_URL, headers={'User-Agent': 'Mozilla/5.0'})
+        remote = urlopen(req, timeout=15).read()
+        remoteVersion = remote.decode("utf-8").strip() if PY3 else remote.strip()
+    except Exception as e:
+        session.open(MessageBox, _("Could not check for updates:\n%s") % str(e), MessageBox.TYPE_ERROR, timeout=5)
+        return
+    if _versionTuple(remoteVersion) > _versionTuple(version):
+        session.openWithCallback(
+            lambda ret: doPluginUpdate(session) if ret else None,
+            MessageBox,
+            _("Update available: %s (current: %s)\nDownload and install now?") % (remoteVersion, version),
+            MessageBox.TYPE_YESNO
+        )
+    else:
+        session.open(MessageBox, _("You already have the latest version (%s).") % version, MessageBox.TYPE_INFO, timeout=4)
+
+def doPluginUpdate(session):
+    session.open(MessageBox, _("Downloading update, please wait..."), MessageBox.TYPE_INFO, timeout=3)
+    try:
+        tmpZip = "/tmp/theweather_update.zip"
+        req = urllib2.Request(PLUGIN_ZIP_URL, headers={'User-Agent': 'Mozilla/5.0'})
+        handler = urlopen(req, timeout=30)
+        with open(tmpZip, "wb") as f:
+            f.write(handler.read())
+        with zipfile.ZipFile(tmpZip, "r") as z:
+            for entry in z.namelist():
+                if entry.endswith("/"):
+                    continue
+                if entry.startswith(UPDATE_EXCLUDE_PREFIXES):
+                    continue
+                doel = os.path.join(PLUGIN_DIR, entry)
+                doelDir = os.path.dirname(doel)
+                if doelDir and not os.path.exists(doelDir):
+                    os.makedirs(doelDir)
+                with z.open(entry) as bron, open(doel, "wb") as uit:
+                    shutil.copyfileobj(bron, uit)
+        os.remove(tmpZip)
+        session.openWithCallback(
+            lambda ret=None: _scheduleRestart(session),
+            MessageBox,
+            _("Update installed.\nEnigma2 will now restart to load the new version."),
+            MessageBox.TYPE_INFO,
+            timeout=4
+        )
+    except Exception as e:
+        print("[TheWeather] doPluginUpdate error:", e)
+        session.open(MessageBox, _("Update failed:\n%s") % str(e), MessageBox.TYPE_ERROR, timeout=5)
 
 def AddNewScreen(screen):
     screens.append(screen)
@@ -2731,31 +3035,6 @@ def latlon_to_tile(lat, lon, zoom):
     ytile = int((1.0 - math.log(math.tan(lat_rad) + (1 / math.cos(lat_rad))) / math.pi) / 2.0 * n)
     return xtile, ytile
 
-
-def fetchRadarTest(lat, lon, zoom=7, outdir="/tmp"):
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36'}
-    xtile, ytile = latlon_to_tile(lat, lon, zoom)
-    print("[TheWeather] tile x=%s y=%s z=%s" % (xtile, ytile, zoom))
-
-    req = urllib2.Request("https://api.rainviewer.com/public/weather-maps.json", data=None, headers=headers)
-    handler = urllib2.urlopen(req, timeout=10)
-    meta = json.loads(handler.read())
-    lastFrame = meta["radar"]["past"][-1]["path"] 
-
-    osmUrl = "https://tile.openstreetmap.org/%s/%s/%s.png" % (zoom, xtile, ytile)
-    req = urllib2.Request(osmUrl, data=None, headers=headers)
-    handler = urllib2.urlopen(req, timeout=10)
-    with open(outdir + "/basemap_test.png", "wb") as f:
-        f.write(handler.read())
-
-    radarUrl = "https://tilecache.rainviewer.com%s/256/%s/%s/%s/2/1_1.png" % (lastFrame, zoom, xtile, ytile)
-    req = urllib2.Request(radarUrl, data=None, headers=headers)
-    handler = urllib2.urlopen(req, timeout=10)
-    with open(outdir + "/radar_test.png", "wb") as f:
-        f.write(handler.read())
-
-    print("[TheWeather] basemap_test.png en radar_test.png weggeschreven naar %s" % outdir)
-
 def safeTimerCallback(timer, func):
     if hasattr(timer, "callback"):
         try:
@@ -2774,7 +3053,7 @@ def main(session, **kwargs):
     except OSError as e:
         print("[TheWeather] Failed to create folder: %s" % str(e))
 
-    global icoonpath, backgroundpath, _restartInProgress
+    global icoonpath, backgroundpath, backgroundAutoWeather, holidayBackgroundsEnabled, _restartInProgress
     _restartInProgress = False
     
     if checkInternet():
@@ -2795,8 +3074,15 @@ def main(session, **kwargs):
         if os.path.exists(locdirsave):
             with open(locdirsave) as f:
                 val = f.read().strip()
-                if val and os.path.exists(val):
+                if val == "AUTO":
+                    backgroundAutoWeather = True
+                elif val and os.path.exists(val):
                     backgroundpath = val
+
+        locdirsave = CFG_DIR + "/TheWeather_holidays.cfg"
+        if os.path.exists(locdirsave):
+            with open(locdirsave) as f:
+                holidayBackgroundsEnabled = f.read().strip() != "0"
 
         location = None
         locdirsave = CFG_DIR + "/TheWeather_last.cfg"
@@ -2827,12 +3113,12 @@ OVERLAY_Y = 0                     #size from above
 OVERLAY_RAIN_X = 60               #value higher = -->
 OVERLAY_RAIN_Y = 6
 OVERLAY_RAIN_WIDTH = 260
-OVERLAY_RAIN_HEIGHT = 34          #textframe 12
+OVERLAY_RAIN_HEIGHT = 34          #textframe
 
 OVERLAY_TEMP_X = 320              #value higher = -->
 OVERLAY_TEMP_Y = 2                #Temp value
 OVERLAY_TEMP_WIDTH = 160
-OVERLAY_TEMP_HEIGHT = 44          #40
+OVERLAY_TEMP_HEIGHT = 44          
 
 class TempOverlay(Screen):
     def __init__(self, session):
