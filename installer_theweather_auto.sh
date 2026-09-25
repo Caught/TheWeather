@@ -26,65 +26,40 @@ download_file() {
     fi
 }
 
-# Try to install a package file, trying several install methods in turn.
-# Some images expose an "opkg" command that is actually a wrapper around
-# apt/dpkg rather than real opkg, and those wrappers can reject certain
-# flag combinations (e.g. "--force-overwrite --force-reinstall" together)
-# or only accept local files with a ".deb" extension. Real opkg, on the
-# other hand, does not understand ".deb"-suffixed local files at all.
-# So: try the most compatible commands first, without assuming which
-# implementation is actually behind "opkg" on this box, and verify the
-# result by checking the package database afterwards instead of trusting
-# any command's exit code or printed text alone.
+# Try to install a package file, checking OPKG (IPK) first, then DPKG (DEB) if applicable.
 try_install() {
     PKG_PATH="$1"
     PKG_NAME="$2"
 
-    # 1. Plain opkg install, no force flags (works on real opkg; also
-    #    works on some apt/opkg-wrapper images).
+    # 1. Standard OPKG systems (OpenATV, OpenPLi, OpenBH, OpenViX, etc.)
     if command -v opkg >/dev/null 2>&1; then
-        echo "-> Trying: opkg install ${PKG_PATH}"
-        opkg install "${PKG_PATH}" >/tmp/theweather_install.log 2>&1
+        echo "-> Trying: opkg install --force-overwrite --force-reinstall ${PKG_PATH}"
+        opkg install --force-overwrite --force-reinstall "${PKG_PATH}" >/tmp/theweather_install.log 2>&1
+        
         if opkg list-installed 2>/dev/null | grep -q "^${PKG_NAME} "; then
             return 0
         fi
     fi
 
-    # 2. Some opkg wrappers (apt/dpkg-based) only accept local files that
-    #    end in ".deb" when passed to "install". If our file is ".ipk",
-    #    make a ".deb"-named copy pointing at the same content and retry.
-    case "${PKG_PATH}" in
-        *.ipk)
-            DEB_PATH="${PKG_PATH%.ipk}.deb"
-            cp "${PKG_PATH}" "${DEB_PATH}" 2>/dev/null
-            if command -v opkg >/dev/null 2>&1; then
-                echo "-> Trying: opkg install ${DEB_PATH}"
-                opkg install "${DEB_PATH}" >/tmp/theweather_install.log 2>&1
-                if opkg list-installed 2>/dev/null | grep -q "^${PKG_NAME} "; then
-                    rm -f "${DEB_PATH}"
-                    return 0
-                fi
-            fi
-            ;;
-        *)
-            DEB_PATH=""
-            ;;
-    esac
+    # 2. DreamOS / DPKG systems (Newer Dreamboxes using APT/DPKG)
+    # Only run this if apt-get/dpkg is explicitly present to avoid fake .deb errors on OPKG boxes
+    if command -v dpkg >/dev/null 2>&1 && command -v apt-get >/dev/null 2>&1; then
+        DEB_PATH="${PKG_PATH%.ipk}.deb"
+        cp "${PKG_PATH}" "${DEB_PATH}" 2>/dev/null
 
-    # 3. Fall back to dpkg directly, if present. This is what actually
-    #    works on boxes where "opkg" turned out to be an apt/dpkg wrapper
-    #    that does not support installing local files via "install" at all.
-    if command -v dpkg >/dev/null 2>&1; then
-        TARGET="${DEB_PATH:-$PKG_PATH}"
-        echo "-> Trying: dpkg -i ${TARGET}"
-        dpkg -i "${TARGET}" >/tmp/theweather_install.log 2>&1
+        echo "-> Trying: dpkg -i ${DEB_PATH}"
+        dpkg -i "${DEB_PATH}" >/tmp/theweather_install.log 2>&1
+        
+        # Fix missing dependencies if needed
+        apt-get install -f -y >/dev/null 2>&1
+
         if dpkg -l 2>/dev/null | awk '{print $2}' | grep -q "^${PKG_NAME}$"; then
-            [ -n "${DEB_PATH}" ] && rm -f "${DEB_PATH}"
+            rm -f "${DEB_PATH}"
             return 0
         fi
+        rm -f "${DEB_PATH}"
     fi
 
-    [ -n "${DEB_PATH}" ] && rm -f "${DEB_PATH}"
     return 1
 }
 
@@ -126,17 +101,17 @@ printf "Do you want to restart the GUI (Enigma2) now? [y/N]: "
 read RESTART < /dev/tty
 
 case "$RESTART" in
-  y|Y|yes|YES )
-    echo "-> Restarting GUI now..."
-    if command -v init >/dev/null 2>&1; then
-        init 4 && init 3
-    else
-        systemctl restart enigma2
-    fi
-    ;;
-  * )
-    echo "-> Restart skipped. Please remember to restart the GUI manually!"
-    ;;
+    y|Y|yes|YES )
+        echo "-> Restarting GUI now..."
+        if command -v init >/dev/null 2>&1; then
+            init 4 && init 3
+        else
+            systemctl restart enigma2
+        fi
+        ;;
+    * )
+        echo "-> Restart skipped. Please remember to restart the GUI manually!"
+        ;;
 esac
 
 exit 0
