@@ -838,21 +838,55 @@ find_plugin_source()
 
 
     # -----------------------------------------------------
-    # GitHub repository root
+    # Current repository layout: resources and code live in
+    # SEPARATE folders. src/ has Images/Images_extra/backgrounds/
+    # locale but NO .py files; src-ipk/ (identical to src-deb/) has
+    # ONLY plugin.py + __init__.py. Neither folder alone is a
+    # deployable plugin - they must be merged: resources first,
+    # then the code copied on top into one assembled folder.
     # -----------------------------------------------------
 
-    # -----------------------------------------------------
-    # Full plugin source (src/) - includes Images, Images_extra,
-    # backgrounds, locale, etc. This is the ONLY folder that should
-    # ever be installed.
-    # -----------------------------------------------------
+    REPO_ROOT="$TMPPATH/TheWeather-${BRANCH}"
 
-    if [ -f "$TMPPATH/TheWeather-${BRANCH}/src/__init__.py" ] &&
-       [ -f "$TMPPATH/TheWeather-${BRANCH}/src/plugin.py" ]; then
+    if [ -d "$REPO_ROOT/src" ] &&
+       [ -f "$REPO_ROOT/src-ipk/plugin.py" ] &&
+       [ -f "$REPO_ROOT/src-ipk/__init__.py" ]; then
 
-        PLUGIN_SOURCE="$TMPPATH/TheWeather-${BRANCH}/src"
+        MERGED="$TMPPATH/merged-plugin-source"
+        rm -rf "$MERGED"
 
-        log "Found full plugin source in src/."
+        if ! mkdir -p "$MERGED"; then
+
+            error "Could not create merged plugin source directory."
+
+            cleanup
+            exit 1
+
+        fi
+
+        # Resources first ...
+        if ! cp -a "$REPO_ROOT/src"/. "$MERGED"/; then
+
+            error "Could not copy resources from src/."
+
+            cleanup
+            exit 1
+
+        fi
+
+        # ... then the code overlaid on top.
+        if ! cp -a "$REPO_ROOT/src-ipk"/. "$MERGED"/; then
+
+            error "Could not copy code from src-ipk/."
+
+            cleanup
+            exit 1
+
+        fi
+
+        PLUGIN_SOURCE="$MERGED"
+
+        log "Assembled full plugin source from src/ + src-ipk/."
 
     fi
 
@@ -862,12 +896,27 @@ find_plugin_source()
     # -----------------------------------------------------
 
     if [ -z "$PLUGIN_SOURCE" ] &&
-       [ -f "$TMPPATH/TheWeather-${BRANCH}/__init__.py" ] &&
-       [ -f "$TMPPATH/TheWeather-${BRANCH}/plugin.py" ]; then
+       [ -f "$REPO_ROOT/__init__.py" ] &&
+       [ -f "$REPO_ROOT/plugin.py" ]; then
 
-        PLUGIN_SOURCE="$TMPPATH/TheWeather-${BRANCH}"
+        PLUGIN_SOURCE="$REPO_ROOT"
 
         log "Found plugin in repository root."
+
+    fi
+
+
+    # -----------------------------------------------------
+    # Older repository layout: src/ itself was already complete
+    # -----------------------------------------------------
+
+    if [ -z "$PLUGIN_SOURCE" ] &&
+       [ -f "$REPO_ROOT/src/__init__.py" ] &&
+       [ -f "$REPO_ROOT/src/plugin.py" ]; then
+
+        PLUGIN_SOURCE="$REPO_ROOT/src"
+
+        log "Found full plugin source in src/."
 
     fi
 
