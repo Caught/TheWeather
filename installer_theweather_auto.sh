@@ -841,7 +841,28 @@ find_plugin_source()
     # GitHub repository root
     # -----------------------------------------------------
 
-    if [ -f "$TMPPATH/TheWeather-${BRANCH}/__init__.py" ] &&
+    # -----------------------------------------------------
+    # Full plugin source (src/) - includes Images, Images_extra,
+    # backgrounds, locale, etc. This is the ONLY folder that should
+    # ever be installed.
+    # -----------------------------------------------------
+
+    if [ -f "$TMPPATH/TheWeather-${BRANCH}/src/__init__.py" ] &&
+       [ -f "$TMPPATH/TheWeather-${BRANCH}/src/plugin.py" ]; then
+
+        PLUGIN_SOURCE="$TMPPATH/TheWeather-${BRANCH}/src"
+
+        log "Found full plugin source in src/."
+
+    fi
+
+
+    # -----------------------------------------------------
+    # Older repository layout: files sat at the repository root
+    # -----------------------------------------------------
+
+    if [ -z "$PLUGIN_SOURCE" ] &&
+       [ -f "$TMPPATH/TheWeather-${BRANCH}/__init__.py" ] &&
        [ -f "$TMPPATH/TheWeather-${BRANCH}/plugin.py" ]; then
 
         PLUGIN_SOURCE="$TMPPATH/TheWeather-${BRANCH}"
@@ -859,8 +880,13 @@ find_plugin_source()
 
         PLUGIN_SOURCE=$(
             find "$TMPPATH" \
+                -type d \
+                \( -name "src-ipk" -o -name "src-deb" \) \
+                -prune \
+                -o \
                 -type f \
                 -name "plugin.py" \
+                -print \
                 2>/dev/null |
             while read -r FILE
             do
