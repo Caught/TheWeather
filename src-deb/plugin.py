@@ -1,4 +1,4 @@
-#v.5.0
+#v.5.0.1
 import os
 import sys
 import time
@@ -73,7 +73,7 @@ def getCoordsFromEntry(value):
             return None, None
     return None, None
 
-version = '5.0'
+version = '5.0.1'
 PluginLanguageDomain = "FileBrowser"
 PluginLanguagePath = "Extensions/TheWeather/locale/"
 OAWeather = resolveFilename(SCOPE_PLUGINS, "Extensions/{}".format('OAWeather'))
@@ -545,7 +545,7 @@ def iconToBgCategory(icon):
 
 AUTO_BG_DIR = "/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/backgrounds/auto/"
 AUTO_BG_EXTENSIONS = (".jpg", ".jpeg", ".png", ".bmp")
-AUTO_BG_ZIP_URL = "https://github.com/Caught/TheWeather/releases/download/v4.5/backgrounds_auto.zip"
+AUTO_BG_ZIP_URL = "https://github.com/Caught/TheWeather/releases/latest/download/backgrounds_auto.zip"
 PLUGIN_DIR = "/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/"
 VERSION_URL = "https://raw.githubusercontent.com/Caught/TheWeather/main/version.txt"
 PLUGIN_ZIP_URL = "https://github.com/Caught/TheWeather/releases/latest/download/PLUGIN_ZIP_URL.zip"
