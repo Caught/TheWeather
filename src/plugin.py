@@ -1,4 +1,4 @@
-#v.5.0.1
+#v.5.2
 import os
 import sys
 import time
@@ -73,7 +73,7 @@ def getCoordsFromEntry(value):
             return None, None
     return None, None
 
-version = '5.0.1'
+version = '5.2'
 PluginLanguageDomain = "FileBrowser"
 PluginLanguagePath = "Extensions/TheWeather/locale/"
 OAWeather = resolveFilename(SCOPE_PLUGINS, "Extensions/{}".format('OAWeather'))
@@ -604,6 +604,24 @@ def getHolidayBgCategory():
             return cat
     return None
 
+def isNightTime():
+    global weatherData
+    try:
+        dag = weatherData["days"][0]
+        sunrise = dag.get("sunrise", "")
+        sunset = dag.get("sunset", "")
+        if not sunrise or not sunset:
+            return False
+        now = time.localtime()
+        nowMin = now.tm_hour * 60 + now.tm_min
+        sr = sunrise.split("T")[1]
+        ss = sunset.split("T")[1]
+        srMin = int(sr[:2]) * 60 + int(sr[3:5])
+        ssMin = int(ss[:2]) * 60 + int(ss[3:5])
+        return not (srMin <= nowMin < ssMin)
+    except Exception:
+        return False
+
 def getAutoWeatherBackground():
     global weatherData
     defaultBg = "/usr/lib/enigma2/python/Plugins/Extensions/TheWeather/" + SHARED_PACK + "/backgroundhd.png"
@@ -619,6 +637,13 @@ def getAutoWeatherBackground():
     except Exception:
         return defaultBg
     category = iconToBgCategory(icon)
+    if not category:
+        return defaultBg
+
+    if isNightTime():
+        nightBg = findAutoBgFile(category + "_night")
+        if nightBg:
+            return nightBg
     bgfile = findAutoBgFile(category)
     return bgfile if bgfile else defaultBg
 

@@ -298,10 +298,10 @@ msgid "h"
 msgstr "u"
 
 msgid "Heavy rain!"
-msgstr "Zware regen!"
+msgstr "Hevige regenval!"
 
 msgid "Heavy storm!"
-msgstr "Zware storm!"
+msgstr "Hevige storm!"
 
 msgid "Icon pack changed.\nThe plugin will restart..."
 msgstr "Iconpakket gewijzigd.\nDe plugin herstart..."
@@ -358,7 +358,7 @@ msgid "TheWeather_v.%s"
 msgstr "HetWeer_v.%s"
 
 msgid "Very heavy rain!"
-msgstr "Zeer zware regen!"
+msgstr "Zeer Hevige regen!"
 
 msgid "Warm weather!"
 msgstr "Warm weer!"
