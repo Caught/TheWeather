@@ -641,7 +641,8 @@ def getAutoWeatherBackground():
         return defaultBg
 
     if isNightTime():
-        nightBg = findAutoBgFile(category + "_night")
+        nightCategory = "clear" if category == "sunny" else category
+        nightBg = findAutoBgFile(nightCategory + "_night")
         if nightBg:
             return nightBg
     bgfile = findAutoBgFile(category)
