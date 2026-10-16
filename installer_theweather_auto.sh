@@ -4,7 +4,7 @@
 # TheWeather Installer
 # =========================================================
 
-version='5.0.1'
+version='5.23'
 # NOTE: this installer always pulls the current "$BRANCH" branch (see
 # DOWNLOAD_URL below), so the real installed code can drift ahead of this
 # label over time. Update it when you cut a new tagged release.
